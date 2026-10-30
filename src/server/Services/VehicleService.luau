@@ -29,6 +29,7 @@ type CarRecord = {
 	LastCheck: number,
 	SpeedStrikes: number,
 	IgnoreChecksUntil: number,
+	CollisionGroup: string,
 }
 
 local VehicleService = {}
@@ -67,10 +68,10 @@ local function claimSlot(): number
 	return slot
 end
 
-local function setCollisionGroup(root: Instance)
+local function setCollisionGroup(root: Instance, group: string)
 	for _, descendant in root:GetDescendants() do
 		if descendant:IsA("BasePart") then
-			descendant.CollisionGroup = CAR_GROUP
+			descendant.CollisionGroup = group
 		end
 	end
 end
@@ -119,7 +120,7 @@ local function seatDriver(record: CarRecord, humanoid: Humanoid)
 	for _, descendant in character:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Massless = true
-			descendant.CollisionGroup = CAR_GROUP
+			descendant.CollisionGroup = record.CollisionGroup
 		end
 	end
 	character:PivotTo(record.Seat.CFrame + Vector3.new(0, 3, 0))
@@ -142,7 +143,7 @@ local function spawnCarFor(player: Player, character: Model)
 
 	local slot = claimSlot()
 	local model = CarBuilder.Build(CAR_COLORS[(slot - 1) % #CAR_COLORS + 1], player.UserId)
-	setCollisionGroup(model)
+	setCollisionGroup(model, CAR_GROUP)
 	local spawnCFrame = getSpawnCFrame(slot)
 	model:PivotTo(spawnCFrame)
 	model.Parent = workspace
@@ -157,6 +158,7 @@ local function spawnCarFor(player: Player, character: Model)
 		LastCheck = os.clock(),
 		SpeedStrikes = 0,
 		IgnoreChecksUntil = os.clock() + 2,
+		CollisionGroup = CAR_GROUP,
 	}
 	cars[player] = record
 	record.Chassis:SetNetworkOwner(player)
@@ -248,6 +250,20 @@ function VehicleService.MoveCar(player: Player, target: CFrame): boolean
 	end
 	forceMove(record, target)
 	return true
+end
+
+-- Byter kollisionsgrupp för spelarens bil och förare (t.ex. "RaceCars" under ett race).
+-- Utan grupp återgår bilen till spökläget för fri körning.
+function VehicleService.SetCollisionGroup(player: Player, group: string?)
+	local record = cars[player]
+	if not record then
+		return
+	end
+	record.CollisionGroup = group or CAR_GROUP
+	setCollisionGroup(record.Model, record.CollisionGroup)
+	if player.Character then
+		setCollisionGroup(player.Character, record.CollisionGroup)
+	end
 end
 
 -- Ställer bilen på hjulen där den står, vänd åt samma håll.

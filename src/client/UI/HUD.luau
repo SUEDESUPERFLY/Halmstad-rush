@@ -19,6 +19,7 @@ local POPUP_COLORS: { [string]: Color3 } = {
 	info = Color3.fromRGB(220, 220, 220),
 	takedown = Color3.fromRGB(255, 70, 60),
 	wreck = Color3.fromRGB(255, 150, 40),
+	money = Color3.fromRGB(255, 215, 80),
 }
 
 local BIG_POPUPS: { [string]: boolean } = { takedown = true, wreck = true }
@@ -28,6 +29,7 @@ local speedLabel: TextLabel
 local boostFill: Frame
 local boostFrame: Frame
 local popupHolder: Frame
+local moneyLabel: TextLabel
 
 local function corner(parent: Instance, radius: number)
 	local c = Instance.new("UICorner")
@@ -87,6 +89,20 @@ local function build()
 	popupHolder.Size = UDim2.fromOffset(400, 200)
 	popupHolder.Parent = gui
 
+	moneyLabel = Instance.new("TextLabel")
+	moneyLabel.Name = "Money"
+	moneyLabel.AnchorPoint = Vector2.new(1, 0)
+	moneyLabel.Position = UDim2.new(1, -16, 0, 70)
+	moneyLabel.Size = UDim2.fromOffset(200, 40)
+	moneyLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+	moneyLabel.BackgroundTransparency = 0.35
+	moneyLabel.Font = Enum.Font.GothamBlack
+	moneyLabel.TextSize = 24
+	moneyLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
+	moneyLabel.Text = "0 kr"
+	moneyLabel.Parent = gui
+	corner(moneyLabel, 10)
+
 	local layout = Instance.new("UIListLayout")
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	layout.Padding = UDim.new(0, 4)
@@ -116,8 +132,21 @@ local function showPopup(text: string, kind: string)
 	end)
 end
 
+-- Pengarna läses från leaderstats (servern äger värdet).
+local function watchMoney()
+	local player = Players.LocalPlayer
+	local leaderstats = player:WaitForChild("leaderstats")
+	local kronor = leaderstats:WaitForChild("Kronor") :: IntValue
+	local function refresh()
+		moneyLabel.Text = ("%d kr"):format(kronor.Value)
+	end
+	kronor.Changed:Connect(refresh)
+	refresh()
+end
+
 function HUD.Start()
 	build()
+	task.spawn(watchMoney)
 
 	VehicleController.Entered:Connect(function()
 		gui.Enabled = true

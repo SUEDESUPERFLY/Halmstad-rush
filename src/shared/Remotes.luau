@@ -14,6 +14,13 @@ Remotes.Names = {
 	ReportWreck = "ReportWreck", -- klient -> server, inga argument (min bil är kvaddad, flytta mig)
 	Takedown = "Takedown", -- server -> klient, (npcChassis: BasePart) du gjorde en takedown
 	CrashEffect = "CrashEffect", -- server -> alla, (position: Vector3, strength: number) NPC-krock
+	RaceInvite = "RaceInvite", -- server -> klient, (raceId, raceName, lobbyOpen: boolean) du står vid en startlinje
+	RequestJoinRace = "RequestJoinRace", -- klient -> server, (raceId: string)
+	LeaveRace = "LeaveRace", -- klient -> server, inga argument
+	RaceSetup = "RaceSetup", -- server -> klient, (setup: table) kontrollpunkter och starttid
+	RaceCheckpoint = "RaceCheckpoint", -- server -> klient, (passedIndex: number)
+	RaceUpdate = "RaceUpdate", -- server -> klient, (position, participants, elapsed)
+	RaceFinished = "RaceFinished", -- server -> klient, (results: table)
 }
 
 local FOLDER_NAME = "Remotes"

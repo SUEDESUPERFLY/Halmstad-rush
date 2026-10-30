@@ -11,10 +11,12 @@ local modules = {
 	Controllers:WaitForChild("CameraController"),
 	Controllers:WaitForChild("EffectsController"),
 	Controllers:WaitForChild("CrashController"),
+	Controllers:WaitForChild("RaceController"),
 	UI:WaitForChild("HUD"),
 	UI:WaitForChild("TouchControls"),
 	UI:WaitForChild("DistrictBanner"),
 	UI:WaitForChild("LocationMenu"),
+	UI:WaitForChild("RaceUI"),
 }
 
 for _, module in modules do

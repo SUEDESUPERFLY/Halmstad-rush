@@ -89,6 +89,24 @@ build/      -> byggd placefil (committas)
 - `CrashEffect` skickas till alla när en NPC kvaddas, och visas för spelare inom 600 studs.
 - NPC-bilarna har attributet `Obstacle` och ger nära-ögat-boost.
 
+## Race och pengar (fas 4)
+- **Banor** (`RaceConfig.Races`) följer de genererade rutterna i `CityRoutes`. Kontrollpunkterna ligger var `CheckpointSpacing`:e ruttpunkt, och mål är startpunkten. Första racet heter "Stora ringen" (1 varv, cirka 8 500 studs, 3 NPC-motståndare).
+- **`RaceService` (servern avgör allt):** flödet är Idle, Lobby (`LobbyTime`, andra kan gå med), Countdown (alla flyttas till startgriden, och den som rullar iväg ställs tillbaka), Running och Cooldown.
+  - Kontrollpunkter måste tas i ordning. Servern mäter avståndet var 0,1 s, och klienten visar bara portarna.
+  - Placering: i mål efter tid, annars efter framsteg (ruttpunkter).
+  - Racet slutar när alla spelare gått i mål, `FinishTimeout` efter första målgång, eller vid `MaxRaceTime`.
+  - Belöningen (`Rewards` per placering och `TakedownBonus` per takedown) betalas bara ut av servern via `EconomyService`.
+- **Deltagarna ligger i kollisionsgruppen `RaceCars`:** de krockar med varandra och trafiken men är spöken för andra spelare (`VehicleService.SetCollisionGroup`). Klientens fjäderstrålar följer `Chassis.CollisionGroup`.
+- **Respawn och snabbresa under race:** `RespawnService.SetRespawnOverride` gör att kvaddning, vatten och R två gånger flyttar bilen till senaste kontrollpunkten. `SetTeleportBlocker` spärrar snabbresa under racet.
+- **NPC-motståndare** (`NpcService.SpawnRacer`) har egen fart och rubber band mot den ledande spelaren (`RubberBand`). Efter kvaddning kommer de tillbaka strax bakom. Framsteget räknas i `Npc.Passed`.
+- **Takedowns i race:**
+  - Takedowns på motståndare räknas som vanliga takedowns och ger bonus vid målgång.
+  - En kvaddad spelare (ReportWreck) ger takedown till närmaste annan deltagare inom `PlayerTakedownRadius`.
+  - Känd svaghet: en klient kan fejka kvaddningar och skänka takedowns till någon i närheten. Det begränsas av cooldown och avstånd och ger bara små belopp.
+- **Pengar (`EconomyService`):** leaderstats `Kronor`, bara i minnet tills fas 5. `AddMoney` validerar beloppet (`MaxSingleReward`). En takedown i fri körning ger `EconomyConfig.TakedownReward`. Nära ögat, drift och lufttid ger ingen pengar, eftersom de räknas på klienten.
+- `src/server/Util/Leaderstats.luau` skapar leaderstats-värden vid behov.
+- Startlinjen har en neonring, en banderoll och en BillboardGui. Spelaren kör in i ringen och trycker på knappen eller E. Snabbresan "Race: Stora ringen" går till startlinjen.
+
 ## Kontroller
 | | Tangentbord | Handkontroll | Touch |
 |---|---|---|---|
@@ -99,6 +117,7 @@ build/      -> byggd placefil (committas)
 | Boost | Shift | A | BOOST |
 | Återställ (2 tryck = till väg) | R | Y | ↻ |
 | Snabbresa | M | Select | MAP-knappen |
+| Starta/gå med i race (vid startlinjen) | E | B | knappen START RACE |
 
 ## Beslut
 | Beslut | Val |
@@ -115,8 +134,8 @@ build/      -> byggd placefil (committas)
 - [x] Fas 0: plan och frågor
 - [x] Fas 1: Struktur + körbar bil med arkadfysik, drift och boost på en testplatta. Touch-kontroller.
 - [x] Fas 2: Halmstad från riktiga stadskartan + respawn-system
-- [ ] Fas 3: Krockar, takedowns, krockkamera, enkla NPC-bilar *(byggd, väntar på test)*
-- [ ] Fas 4: Första racet + poäng/pengar (i minnet)
+- [x] Fas 3: Krockar, takedowns, krockkamera, enkla NPC-bilar
+- [ ] Fas 4: Första racet + poäng/pengar (i minnet) *(byggd, väntar på test)*
 - [ ] Fas 5: DataStore (retry, sessionslås, versionerat schema), garage, bilköp, uppgraderingar, lackering
 - [ ] Fas 6: Stunts, budjobb, kull-jaktläge, krockläge
 - [ ] Fas 7: Butik, game passes, developer products, daglig belöning

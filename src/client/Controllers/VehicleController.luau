@@ -80,6 +80,7 @@ local lastPosition: Vector3? = nil
 local ignoreCrashUntil = 0
 local inputLockUntil = 0
 local lockedThrottle = 0
+local lockHold = false
 
 local function moveToward(value: number, target: number, maxDelta: number): number
 	if value < target then
@@ -106,10 +107,12 @@ function VehicleController.IgnoreCrashes(seconds: number)
 	lastSetVelocity = nil
 end
 
--- Låser styrningen (rakt fram, samma gas) medan takedown-kameran visas.
-function VehicleController.LockInput(seconds: number)
+-- Låser styrningen en stund. Rakt fram med samma gas (takedown-kameran), eller
+-- `hold` = stå still med bromsen i (nedräkning före race).
+function VehicleController.LockInput(seconds: number, hold: boolean?)
 	inputLockUntil = os.clock() + seconds
-	lockedThrottle = InputController.GetDriveInput().Throttle
+	lockHold = hold == true
+	lockedThrottle = if lockHold then 0 else InputController.GetDriveInput().Throttle
 end
 
 function VehicleController.AddBoost(amount: number)
@@ -312,6 +315,7 @@ local function step(dt: number)
 	local now = os.clock()
 	local input = InputController.GetDriveInput()
 	if now < inputLockUntil then
+		-- (Broms vid stillastående = back, så "håll" är bara ingen gas.)
 		input = { Throttle = lockedThrottle, Brake = 0, Steer = 0, Handbrake = false, Boost = false }
 	end
 	local cf = root.CFrame
@@ -327,6 +331,8 @@ local function step(dt: number)
 		return
 	end
 
+	-- Under race byter servern kollisionsgrupp (RaceCars); strålarna ska följa med.
+	rayParams.CollisionGroup = root.CollisionGroup
 	local grounded, normalSum = Suspension.Update(root, wheels, rayParams)
 	steerSmoothed = moveToward(steerSmoothed, input.Steer, T.SteerSpeed * dt)
 

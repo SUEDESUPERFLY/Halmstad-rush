@@ -21,7 +21,12 @@ local VehicleService = require(script.Parent.VehicleService)
 
 local N = VehicleConfig.Npc
 
-type Npc = {
+export type Npc = {
+	Kind: string, -- "Traffic" | "Racer"
+	Speed: number, -- marschfart
+	SpeedScale: number, -- justeras av RaceService (rubber band)
+	Passed: number, -- antal passerade ruttpunkter (racets framsteg)
+	WreckDuration: number,
 	Model: Model,
 	Chassis: BasePart,
 	Wheels: { Suspension.Wheel },
@@ -142,11 +147,17 @@ local function placeNpc(npc: Npc, index: number)
 end
 
 local function respawnNpc(npc: Npc)
+	if npc.Kind == "Racer" then
+		-- Tävlingsbilar kommer tillbaka strax bakom där de kvaddades
+		local back = 3
+		npc.Passed -= back
+		placeNpc(npc, (npc.Index - 1 - back - 1) % #npc.Route + 1)
+		return
+	end
 	placeNpc(npc, chooseSpawnIndex(npc.Route, npc.Index + math.floor(#npc.Route / 3)))
 end
 
-local function spawnNpc(route: { Vector2 }, index: number, rng: Random)
-	local color = N.Colors[rng:NextInteger(1, #N.Colors)]
+local function spawnNpc(route: { Vector2 }, index: number, color: Color3, rng: Random): Npc
 	local model = CarBuilder.Build(color, 0)
 	model.Name = "NpcCar"
 	model:SetAttribute("IsNpc", true)
@@ -162,6 +173,11 @@ local function spawnNpc(route: { Vector2 }, index: number, rng: Random)
 	rayParams.CollisionGroup = N.CollisionGroup
 
 	local npc: Npc = {
+		Kind = "Traffic",
+		Speed = N.CruiseSpeed,
+		SpeedScale = 1,
+		Passed = 0,
+		WreckDuration = N.WreckDuration,
 		Model = model,
 		Chassis = chassis,
 		Wheels = Suspension.FindWheels(chassis),
@@ -180,6 +196,7 @@ local function spawnNpc(route: { Vector2 }, index: number, rng: Random)
 	chassis:SetNetworkOwner(nil)
 	placeNpc(npc, index)
 	table.insert(npcs, npc)
+	return npc
 end
 
 local function nearestPlayerCar(position: Vector3): Player?
@@ -222,7 +239,7 @@ local function updateNpc(npc: Npc, dt: number, now: number)
 	local angular = root.AssemblyAngularVelocity
 
 	if npc.Mode == "Wrecked" then
-		if now - npc.WreckedAt > N.WreckDuration then
+		if now - npc.WreckedAt > npc.WreckDuration then
 			respawnNpc(npc)
 		end
 		return
@@ -267,6 +284,7 @@ local function updateNpc(npc: Npc, dt: number, now: number)
 	local guard = 0
 	while (target - flat).Magnitude < N.WaypointRadius and guard < 5 do
 		npc.Index = npc.Index % #route + 1
+		npc.Passed += 1
 		target = route[npc.Index]
 		guard += 1
 	end
@@ -276,7 +294,7 @@ local function updateNpc(npc: Npc, dt: number, now: number)
 	local segment = (after - target)
 	local segment3 = Vector3.new(segment.X, 0, segment.Y).Unit
 	local turn = math.acos(math.clamp(toTarget3:Dot(segment3), -1, 1))
-	local targetSpeed = N.CruiseSpeed * (1 - math.min(turn / (math.pi / 2), 0.6))
+	local targetSpeed = npc.Speed * npc.SpeedScale * (1 - math.min(turn / (math.pi / 2), 0.6))
 
 	local normal = (normalSum / grounded).Unit
 	local forward = cf.LookVector - normal * cf.LookVector:Dot(normal)
@@ -310,6 +328,32 @@ local function updateNpc(npc: Npc, dt: number, now: number)
 	end
 end
 
+function NpcService.GetRoute(name: string): { Vector2 }?
+	return routes[name]
+end
+
+-- NPC-motståndare i ett race. Startar vid ruttpunkt `index` och kör med farten `speed`.
+function NpcService.SpawnRacer(routeName: string, index: number, color: Color3, speed: number, wreckDuration: number): Npc?
+	local route = routes[routeName]
+	if not route then
+		return nil
+	end
+	local npc = spawnNpc(route, index, color, Random.new())
+	npc.Kind = "Racer"
+	npc.Speed = speed
+	npc.WreckDuration = wreckDuration
+	npc.Model.Name = "RacerCar"
+	return npc
+end
+
+function NpcService.Remove(npc: Npc)
+	local index = table.find(npcs, npc)
+	if index then
+		table.remove(npcs, index)
+	end
+	npc.Model:Destroy()
+end
+
 function NpcService.Init()
 	if not PhysicsService:IsCollisionGroupRegistered(N.CollisionGroup) then
 		PhysicsService:RegisterCollisionGroup(N.CollisionGroup)
@@ -330,7 +374,7 @@ function NpcService.Start()
 		local route = routes[name]
 		if route and #route > 0 then
 			for i = 0, count - 1 do
-				spawnNpc(route, math.floor(i * #route / count) + 1, rng)
+				spawnNpc(route, math.floor(i * #route / count) + 1, N.Colors[rng:NextInteger(1, #N.Colors)], rng)
 			end
 		end
 	end

@@ -172,6 +172,7 @@ MapData.Locations = {
 	{ Id = "Centralen", Name = "Halmstad C", Position = Vector3.new(362, 0, 654), Yaw = 0, SnapToRoad = true },
 	{ Id = "Arena", Name = "Halmstad Arena", Position = Vector3.new(2000, 0, -24), Yaw = 0, SnapToRoad = true },
 	{ Id = "Hogskolan", Name = "Högskolan", Position = Vector3.new(1546, 0, 1276), Yaw = 0, SnapToRoad = true },
+	{ Id = "RaceStoraRingen", Name = "Race: Stora ringen", Position = Vector3.new(-250, 0, 230), Yaw = -90 },
 	{ Id = "OstraStranden", Name = "Östra stranden", Position = Vector3.new(600, 0, 1776), Yaw = -90 },
 	{ Id = "Tylosand", Name = "Tylösand", Position = Vector3.new(-3500, 0, 1050), Yaw = 90 },
 	{ Id = "Testbanan", Name = "Testbanan", Position = Vector3.new(6000, 0, 300), Yaw = 0 },
