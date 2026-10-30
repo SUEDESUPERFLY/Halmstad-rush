@@ -14,9 +14,9 @@ export type Product = { Key: string, Id: number, Name: string, Description: stri
 local ShopConfig = {}
 
 ShopConfig.Passes = {
-	{ Key = "VipPaint", Id = 0, Name = "VIP-lack", Description = "6 exklusiva lackfärger: guld, krom, pärlvit, neonrosa, neongrön och midnatt." },
-	{ Key = "Underglow", Id = 0, Name = "Neonunderrede", Description = "Neonljus under alla dina bilar. Rent utseende." },
-	{ Key = "FastTravel", Id = 0, Name = "Snabbresa+", Description = "Ingen väntetid mellan snabbresor. Bekvämlighet, ingen fartfördel." },
+	{ Key = "VipPaint", Id = 2062667574, Name = "VIP-lack", Description = "6 exklusiva lackfärger: guld, krom, pärlvit, neonrosa, neongrön och midnatt." },
+	{ Key = "Underglow", Id = 2061401929, Name = "Neonunderrede", Description = "Neonljus under alla dina bilar. Rent utseende." },
+	{ Key = "FastTravel", Id = 2062127808, Name = "Snabbresa+", Description = "Ingen väntetid mellan snabbresor. Bekvämlighet, ingen fartfördel." },
 } :: { Pass }
 
 ShopConfig.Products = {
