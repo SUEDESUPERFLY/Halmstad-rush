@@ -170,6 +170,24 @@ build/      -> byggd placefil (committas)
 - **Klient:** `ShopUI` öppnas med B eller SHOP-knappen. Dagens belöning visas som en notis vid start. Konfetti visas via `Celebrate` och `EffectsController.Confetti`.
 - **När du vill sälja på riktigt:** skapa passen och produkterna på create.roblox.com (spelet → Monetization) och skriv in ID:na i `ShopConfig`.
 
+## Polering: ljud, minikarta och mobil (fas 8)
+- **`SoundController`** (lokalt) använder Robloxs inbyggda ljud (`rbxasset://sounds/...`) och kräver inga uppladdningar:
+  - fartvind som stiger med farten
+  - duns vid krock
+  - plask vid "SPLASH!"
+  - pling vid pengar, kontrollpunkter, takedowns och nära ögat.
+
+  Ett motorljud kan läggas in som ljud-ID i `SoundConfig.EngineId`.
+- **Minikartan (`MinimapUI`)** har norr uppåt och visas uppe till vänster. N döljer och visar den.
+  - Data: `src/shared/Map/MinimapData.luau`, genererad av `tools/map/build_minimap.py` från `CityGrid`. Den består av rektanglar (gata, huvudgata, vatten) på 24 studs, cirka 2 200 GUI-rutor.
+  - Havet och Tylösandsvägen ritas från `MapData`. Prickar visar aktiviteter, kull, racestart, andra spelare och aktuellt mål.
+  - Bara kartans position uppdateras varje bildruta (`ClipsDescendants`).
+- **Mobil och prestanda:**
+  - `Workspace.StreamingEnabled` (min-radie 256, målradie 1024) sätts i `default.project.json` (`$properties`, som byggskriptet stöder för bool, int, float och sträng).
+  - `VehicleService` anropar `RequestStreamAroundAsync` före långa flyttar (över 300 studs), så att marken hinner laddas.
+  - Dekordelar kastar inga skuggor, och plåtdelarna är färre på pekskärm.
+- **ScreenGui-ordning (`DisplayOrder`):** fönster (garage och butik) 10, snabbresemenyn 5, övrigt 0.
+
 ## Kontroller
 | | Tangentbord | Handkontroll | Touch |
 |---|---|---|---|
@@ -184,6 +202,7 @@ build/      -> byggd placefil (committas)
 | Garage | G | – | GARAGE-knappen |
 | Starta aktivitet (vid markören) | E | B | knappen STARTA |
 | Butik | B | – | SHOP-knappen |
+| Minikarta av/på | N | – | – |
 
 ## Beslut
 | Beslut | Val |
@@ -205,11 +224,14 @@ build/      -> byggd placefil (committas)
 - [x] Fas 5: DataStore (retry, sessionslås, versionerat schema), garage, bilköp, uppgraderingar, lackering
 - [ ] Fas 6: Stunts, budjobb, kull-jaktläge, krockläge *(byggd, väntar på test)*
 - [ ] Fas 7: Butik, game passes, developer products, daglig belöning *(byggd, väntar på test)*
-- [ ] Fas 8: Ljud, UI, minikarta, mobiloptimering
+- [ ] Fas 8: Ljud, UI, minikarta, mobiloptimering *(byggd, väntar på test)*
 
 ## Kända begränsningar / att göra
 - Ingen Luau-linter körs i molnmiljön. Fel syns först i Studios Output-fönster.
 - Andra spelare ser inte hjulens fjädring och rotation (fixas vid behov i fas 8).
-- Kartan har inte StreamingEnabled-optimering ännu (fas 8). Cirka 5 600 hus som Parts plus Terrain.
+- Cirka 5 600 hus som Parts plus Terrain, med StreamingEnabled (fas 8). Testa på en riktig mobil innan publicering.
+- UI-språket är blandat (svenska menyer, engelska spelord som WRECKED!/TAKEDOWN!). Beslutet säger engelska med svensk översättning via Localization, så det behöver stämmas av.
+- Inget motorljud förrän ett ljud-ID läggs in i `SoundConfig.EngineId`.
+- Game pass- och produkt-ID:n är 0 tills de skapats på roblox.com (`ShopConfig`).
 - Krockdetekteringen kan ge falska WRECKED! vid hårda landningar i backar. Justera `Crash.WreckImpact` vid behov.
 - Gatorna saknar vägmarkeringar. Husen är enkla block utan tak och fönster (polering senare).

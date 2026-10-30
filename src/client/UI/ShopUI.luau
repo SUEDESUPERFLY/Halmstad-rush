@@ -170,6 +170,7 @@ local function build()
 	gui = Instance.new("ScreenGui")
 	gui.Name = "ShopUI"
 	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 10
 	gui.Enabled = false
 	gui.Parent = player:WaitForChild("PlayerGui")
 

@@ -247,6 +247,7 @@ local function build()
 	gui = Instance.new("ScreenGui")
 	gui.Name = "GarageUI"
 	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 10
 	gui.Enabled = false
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 

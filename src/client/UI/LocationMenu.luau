@@ -30,6 +30,7 @@ local function build()
 	gui = Instance.new("ScreenGui")
 	gui.Name = "LocationMenu"
 	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 5 -- över minikartan
 	gui.Enabled = false
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 

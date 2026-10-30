@@ -37,6 +37,7 @@ function Geometry.Decor(part: BasePart): BasePart
 	part.CanCollide = false
 	part.CanQuery = false
 	part.CanTouch = false
+	part.CastShadow = false -- små dekordelar behöver inga skuggor (prestanda på mobil)
 	return part
 end
 

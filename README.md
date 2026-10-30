@@ -17,6 +17,12 @@ Arkadracing i öppen värld i ett stiliserat Halmstad. Byggt för Roblox, skrive
 
 **Testa på riktig telefon:** publicera spelet från Studio (*File → Publish to Roblox*) och starta det i Roblox-appen. Studio finns bara för Windows och Mac.
 
+## Inför publicering
+- **Sparning:** File → Publish to Roblox, sedan Game Settings → Security → *Enable Studio Access to API Services*.
+- **Butiken:** skapa game passes och developer products på create.roblox.com (spelet → Monetization) och skicka ID:na, så läggs de in i `ShopConfig`.
+- **Motorljud (valfritt):** hitta ett ljud i Toolbox → Audio, kopiera Asset ID och skicka det, så läggs det in i `SoundConfig`.
+- **Max 10 spelare:** Game Settings → Places → Max Players.
+
 ## För utvecklare
 - Källkoden ligger i `src/` (Rojo-struktur, `default.project.json`).
 - `python3 tools/build_place.py` bygger placefilen. Med Rojo fungerar även `rojo serve` / `rojo build`.

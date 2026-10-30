@@ -32,10 +32,31 @@ def cdata(text: str) -> str:
     return "<![CDATA[" + text.replace("]]>", "]]]]><![CDATA[>") + "]]>"
 
 
-def item(class_name: str, name: str, children: list[str], source: str | None = None) -> str:
+def property_xml(key: str, value: object) -> str:
+    """Enkla egenskaper från $properties: bool, heltal, decimaltal och text."""
+    if isinstance(value, bool):
+        return f'<bool name="{key}">{"true" if value else "false"}</bool>'
+    if isinstance(value, int):
+        return f'<int name="{key}">{value}</int>'
+    if isinstance(value, float):
+        return f'<float name="{key}">{value}</float>'
+    if isinstance(value, str):
+        return f'<string name="{key}">{escape(value)}</string>'
+    raise SystemExit(f"Egenskapstypen stöds inte av byggskriptet: {key} = {value!r}")
+
+
+def item(
+    class_name: str,
+    name: str,
+    children: list[str],
+    source: str | None = None,
+    properties: dict | None = None,
+) -> str:
     props = [f'<string name="Name">{escape(name)}</string>']
     if source is not None:
         props.append(f'<ProtectedString name="Source">{cdata(source)}</ProtectedString>')
+    for key, value in (properties or {}).items():
+        props.append(property_xml(key, value))
     inner = "".join(children)
     return (
         f'<Item class="{class_name}" referent="{next_ref()}">'
@@ -97,7 +118,7 @@ def build_node(name: str, node: dict, is_service: bool) -> str:
         for child_name, child in node.items()
         if not child_name.startswith("$")
     ]
-    return item(class_name, name, children)
+    return item(class_name, name, children, properties=node.get("$properties"))
 
 
 def main() -> None:

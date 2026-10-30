@@ -6,6 +6,7 @@
 local Debris = game:GetService("Debris")
 local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local EffectsController = {}
 
@@ -64,6 +65,9 @@ end
 -- Plåtdelar som flyger iväg. Under `slowTime` sekunder bärs de nästan upp (motverkad
 -- gravitation) och rör sig långsamt, sedan faller de som vanligt och tonas bort.
 function EffectsController.Debris(position: Vector3, direction: Vector3, color: Color3, count: number, slowTime: number)
+	if UserInputService.TouchEnabled then
+		count = math.ceil(count / 2) -- färre lösa delar på mobil
+	end
 	local slow = slowTime > 0
 	for _ = 1, count do
 		local piece = Instance.new("Part")

@@ -100,8 +100,17 @@ end
 
 -- Flyttar en bil som klienten äger. Servern tar tillfälligt över ägarskapet
 -- så att flytten inte skrivs över av klientens simulering.
+local STREAM_AHEAD_DISTANCE = 300
+
 local function forceMove(record: CarRecord, target: CFrame, velocity: Vector3?)
 	local chassis = record.Chassis
+	-- Med StreamingEnabled: se till att klienten har marken på målet innan bilen flyttas dit
+	if (target.Position - chassis.Position).Magnitude > STREAM_AHEAD_DISTANCE then
+		pcall(record.Player.RequestStreamAroundAsync, record.Player, target.Position, 3)
+		if cars[record.Player] ~= record or not chassis.Parent then
+			return
+		end
+	end
 	chassis:SetNetworkOwner(nil)
 	record.Model:PivotTo(target)
 	chassis.AssemblyLinearVelocity = velocity or Vector3.zero
