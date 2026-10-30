@@ -193,19 +193,27 @@ local function renderDetails()
 	text(details, Locale.T("PAINT · %d kr", CarCatalog.PaintCost), 16, 22, ACCENT).LayoutOrder = nextOrder()
 	local swatches = Instance.new("Frame")
 	swatches.BackgroundTransparency = 1
-	swatches.Size = UDim2.new(1, 0, 0, 84)
+	swatches.Size = UDim2.new(1, 0, 0, 0)
+	swatches.AutomaticSize = Enum.AutomaticSize.Y -- fler rader när det finns fler färger
 	swatches.LayoutOrder = nextOrder()
 	swatches.Parent = details
 	local grid = Instance.new("UIGridLayout")
 	grid.CellSize = UDim2.fromOffset(36, 36)
 	grid.CellPadding = UDim2.fromOffset(6, 6)
 	grid.Parent = swatches
+	local player = Players.LocalPlayer
 	for _, color in CarCatalog.Colors do
+		-- Grupplacken visas bara om spelet har en grupp
+		if color.Unlock == "Group" and (player:GetAttribute("GroupId") or 0) == 0 then
+			continue
+		end
 		local swatch = Instance.new("TextButton")
 		swatch.Text = ""
 		swatch.BackgroundColor3 = color.Color
 		swatch.Parent = swatches
-		if color.Pass and Players.LocalPlayer:GetAttribute("Pass_" .. color.Pass) ~= true then
+		local passLocked = color.Pass and player:GetAttribute("Pass_" .. color.Pass) ~= true
+		local unlockLocked = color.Unlock and player:GetAttribute("Unlock_" .. color.Unlock) ~= true
+		if passLocked or unlockLocked then
 			swatch.Text = "🔒"
 			swatch.TextScaled = true
 			swatch.TextColor3 = Color3.new(1, 1, 1)

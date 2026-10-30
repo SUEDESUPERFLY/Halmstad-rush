@@ -16,6 +16,7 @@ local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Geometry = require(script.Parent.Parent.Map.Geometry)
 local PlayerMode = require(script.Parent.Parent.Util.PlayerMode)
+local GameEvents = require(script.Parent.Parent.Util.GameEvents)
 local EconomyService = require(script.Parent.EconomyService)
 local NpcService = require(script.Parent.NpcService)
 local RespawnService = require(script.Parent.RespawnService)
@@ -170,6 +171,7 @@ local function finishRound()
 		if player and player.Parent == Players then
 			local reward = Tag.Rewards[math.min(position, #Tag.Rewards)]
 			EconomyService.AddMoney(player, reward, Tag.Name)
+			GameEvents.Fire(player, "TagFinished", 1, { Position = position })
 			remotes.ActivityResult:FireClient(player, {
 				Title = if position == 1 then "YOU WON TAG!" else Locale.Msg("TAG – place %d", position),
 				Lines = lines,

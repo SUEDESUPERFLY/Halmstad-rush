@@ -3,9 +3,11 @@
 -- All ändring av saldot går genom den här modulen och sker bara på servern.
 -- Leaderstats (Kronor, Takedowns) speglar profilen så att de syns i spelarlistan.
 
+local AnalyticsService = game:GetService("AnalyticsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local CommunityConfig = require(ReplicatedStorage.Shared.Config.CommunityConfig)
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -32,14 +34,30 @@ function EconomyService.AddMoney(player: Player, amount: number, reason: Locale.
 		return false
 	end
 	local rounded = math.floor(amount)
+	-- Vänbonus (CommunityService sätter attributet när en vän är på samma server)
+	if player:GetAttribute("FriendBonus") == true then
+		rounded = math.min(EconomyConfig.MaxSingleReward, math.floor(rounded * (1 + CommunityConfig.FriendBonus)))
+	end
+	local balance = 0
 	local ok = DataService.Update(player, function(data)
 		data.Money += rounded
+		balance = data.Money
 	end)
 	if ok then
 		local message = if reason
 			then Locale.Msg("+%d kr  %s", rounded, if typeof(reason) == "string" then Locale.Msg(reason) else reason)
 			else Locale.Msg("+%d kr", rounded)
 		notifyRemote:FireClient(player, message, "money")
+		pcall(function()
+			AnalyticsService:LogEconomyEvent(
+				player,
+				Enum.AnalyticsEconomyFlowType.Source,
+				"Kronor",
+				rounded,
+				balance,
+				Enum.AnalyticsEconomyTransactionType.Gameplay.Name
+			)
+		end)
 	end
 	return ok
 end
@@ -53,9 +71,25 @@ function EconomyService.Spend(player: Player, amount: number): boolean
 	if not data or data.Money < amount then
 		return false
 	end
-	return DataService.Update(player, function(profile)
-		profile.Money -= math.floor(amount)
+	local spent = math.floor(amount)
+	local balance = 0
+	local ok = DataService.Update(player, function(profile)
+		profile.Money -= spent
+		balance = profile.Money
 	end)
+	if ok and spent > 0 then
+		pcall(function()
+			AnalyticsService:LogEconomyEvent(
+				player,
+				Enum.AnalyticsEconomyFlowType.Sink,
+				"Kronor",
+				spent,
+				balance,
+				Enum.AnalyticsEconomyTransactionType.Shop.Name
+			)
+		end)
+	end
+	return ok
 end
 
 function EconomyService.Init()

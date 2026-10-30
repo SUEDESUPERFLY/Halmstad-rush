@@ -16,6 +16,7 @@ local modules = {
 	Controllers:WaitForChild("SoundController"),
 	Controllers:WaitForChild("SpinnerController"),
 	Controllers:WaitForChild("LocaleController"),
+	Controllers:WaitForChild("CollectibleController"),
 	UI:WaitForChild("HUD"),
 	UI:WaitForChild("TouchControls"),
 	UI:WaitForChild("DistrictBanner"),
@@ -26,6 +27,8 @@ local modules = {
 	UI:WaitForChild("ShopUI"),
 	UI:WaitForChild("MinimapUI"),
 	UI:WaitForChild("HelpUI"),
+	UI:WaitForChild("GoalsUI"),
+	UI:WaitForChild("LeaderboardUI"),
 }
 
 for _, module in modules do

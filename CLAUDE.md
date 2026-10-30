@@ -206,6 +206,23 @@ build/      -> byggd placefil (committas)
 - **Ljus:** `Lighting.Technology = ShadowMap` sätts i `default.project.json` (byggskriptet stöder enum som `{"Enum": n}`). `ShadowSoftness`, miljöljus för de nya materialen, varm ton och svaga solstrålar sätts i `MapService`.
 - Cirka 23 000 extra delar på husen plus träd, lyktor och linjer. StreamingEnabled gör att mobilen bara laddar det närmaste.
 
+## Fler spelare: utmaningar, topplistor, badges, laxar, vänner (fas 10)
+- **`GameEvents`** (`src/server/Util`): händelser som servern själv avgjort (`Takedown`, `RaceFinished`, `RacePodium`, `ActivityFinished`, `Delivery`, `StuntMedal`, `DriftMedal`, `TagFinished`, `SalmonFound`, `SalmonAll`, `DailyAll`, `Distance`, `Drift`, `Boost`). Utmaningar, badges och topplistor lyssnar här. Klienten kan aldrig skicka en händelse.
+- **Schema v3:** `Challenges`, `Tutorial`, `Salmon`, `Best`, `Weekly`. Spelare från v1/v2 hoppar över kom igång-guiden (`Tutorial.Step = 99`).
+- **`ChallengeService`** + `ChallengeConfig`:
+  - Dagens 3 utmaningar slumpas från dagnumret (samma för alla, olika typer), med belöning per utmaning och `AllDoneBonus`. Nollställs vid UTC-midnatt.
+  - Kom igång-guiden för nya spelare: kör 300 m, drifta, boosta, gör en takedown. Steget rapporteras till `AnalyticsService:LogOnboardingFunnelStepEvent`.
+  - Körd sträcka, sladd och boost mäts på servern från bilens replikerade rörelse (var 0,25 s). Hopp över `MaxStudsPerSample` (teleport) räknas inte.
+  - Veckans race (`Weekly`): slå `TargetTime` en gång per vecka (måndag–söndag UTC) för `Reward`.
+  - Panelen till höger (`GoalsUI`, J fäller ihop) visar bara `GoalsState`.
+- **`LeaderboardService`:** OrderedDataStore för veckans racetid, veckans takedowns och rekordet per race. Tider i millisekunder. Värden lämnas in av `ChallengeService` (`Submit`), skrivs högst var 60:e sekund per spelare och lista, och hämtas var 60:e sekund (`LeaderboardState`). Tavlan på Stora torg (`CommunityConfig.BoardPosition`, stolpar man kör under) byggs av servern. Texten ritas av klienten (`LeaderboardUI`) på spelarens språk.
+- **`AchievementService`:** badges i `CommunityConfig.Badges` (Id = 0 hoppas över). Välkommen, första racet, racevinst, 100 takedowns, toppen av Galgberget, Tylösand, alla laxar, alla dagens utmaningar.
+- **`CollectibleService`:** 30 silverlaxar (`CommunityConfig.Salmon`, en per stadsdel och vid landmärkena). Inne i staden letar servern upp närmaste park, torg eller sand från punkten (gata i nödfall), minst `MinRadius` bort. Man kör igenom laxen för att ta den. Klienten (`CollectibleController`) döljer redan hittade laxar lokalt. Alla laxar ger `AllSalmonReward`, lacken Salmon silver (`Unlock_AllSalmon`) och en badge.
+- **`CommunityService`:** vänbonus (`FriendBonus` = +10 % kronor i `EconomyService.AddMoney` när en Roblox-vän är på samma server) och Roblox-gruppen (`GroupId`, 0 = av). Medlemmar får lacken Rush blue (`Unlock_Group`). `CommunityAction("CheckGroup")` kontrollerar igen, med cooldown. "Bjud in vänner" sköts helt på klienten (`SocialService:PromptGameInvite`).
+- **Lackfärger med `Unlock`** i `CarCatalog` kontrolleras i `GarageService` mot spelarattributet `Unlock_<namn>`.
+- **Analytics:** `EconomyService` loggar intäkter och utgifter av kronor (`LogEconomyEvent`). Allt inom `pcall`.
+- **Klient:** `GoalsUI` (panelen), `LeaderboardUI` (TOP-knappen eller L: listor, veckans race, bjud in, grupp, laxlistan), `CollectibleController`.
+
 ## Språk
 - **All text i koden skrivs på engelska.** Svenska översättningar ligger i `src/shared/Localization/Swedish.luau`, med den engelska källtexten som nyckel. Saknas en översättning visas engelskan.
 - **`Locale`** (`src/shared/Localization/Locale.luau`) väljer svenska på klienten om `LocalizationService.RobloxLocaleId` börjar på `sv`. Alla andra språk får engelska.
@@ -233,6 +250,8 @@ build/      -> byggd placefil (committas)
 | Butik | B | – | SHOP-knappen |
 | Minikarta av/på | N | – | – |
 | Musik av/på | U | – | ♪-knappen |
+| Dagens utmaningar (fäll ihop) | J | – | tryck på panelen |
+| Topplistor och vänner | L | – | TOP-knappen |
 | Hjälp (kontroller) | H | – | ?-knappen |
 
 ## Beslut
@@ -257,6 +276,7 @@ build/      -> byggd placefil (committas)
 - [x] Fas 7: Butik, game passes, developer products, daglig belöning
 - [x] Fas 8: Ljud, UI, minikarta, mobiloptimering
 - [x] Fas 9: Snyggare stad: tak, fönster, trottoarer, träd, gatlyktor, vägmarkeringar, skuggor
+- [ ] Fas 10: Dagliga utmaningar, kom igång-guide, topplistor, badges, gömda laxar, veckans race, vänbonus, grupp *(byggd, väntar på test)*
 
 ## Kända begränsningar / att göra
 - Lint i molnmiljön: `stylua --syntax luau --check` (syntax) och `selene src` (`selene.toml`, egen std `roblox_min.yml` där Roblox-globaler bara deklareras). Ingen typkontroll (luau-lsp saknas), så typfel syns först i Studios Output-fönster. Verktygen installeras med `cargo install stylua selene` om de saknas.
@@ -267,3 +287,5 @@ build/      -> byggd placefil (committas)
 - Krockdetekteringen kan ge falska WRECKED! vid hårda landningar i backar. Justera `Crash.WreckImpact` vid behov.
 - Vägmarkeringar finns bara längs huvudgatorna (rutterna). Mittlinjen följer ruttens linje, som kan ligga lite vid sidan av gatans mitt på breda gator.
 - Husen har inga dörrar eller enskilda fönster, bara fönsterband.
+- Badges och grupp kräver ID:n från roblox.com (`CommunityConfig`). Topplistorna kräver publicerat spel med API-åtkomst.
+- Veckans måltid (`ChallengeConfig.Weekly.TargetTime`, 115 s) är en uppskattning. Justera efter riktiga tider.

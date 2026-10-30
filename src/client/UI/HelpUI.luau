@@ -26,11 +26,14 @@ local ROWS = {
 	{ "Shop", "B", "–", "SHOP" },
 	{ "Minimap on/off", "N", "–", "–" },
 	{ "Music on/off", "U", "–", "♪" },
+	{ "Daily challenges (fold)", "J", "–", "tap the panel" },
+	{ "Top lists & friends", "L", "–", "TOP" },
 	{ "This help", "H", "–", "?" },
 }
 
 local TIPS = "Drift, fly and drive close to obstacles to charge boost. Bump traffic until it wrecks for a TAKEDOWN!\n"
-	.. "Green rings are activities, the yellow one is the race. Money buys cars, upgrades and paint in the garage."
+	.. "Green rings are activities, the yellow one is the race. Money buys cars, upgrades and paint in the garage.\n"
+	.. "Daily challenges are on the right. 30 silver salmon are hidden around Halmstad – drive through them!"
 
 local gui: ScreenGui
 local window: Frame
@@ -167,7 +170,7 @@ function HelpUI.Start()
 	tips.TextColor3 = Color3.fromRGB(200, 205, 220)
 	tips.Text = Locale.T(TIPS)
 	tips.Position = UDim2.fromOffset(0, (#ROWS + 1) * 24 + 12)
-	tips.Size = UDim2.new(1, -10, 0, 70)
+	tips.Size = UDim2.new(1, -10, 0, 120)
 	tips.Parent = scroll
 
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)

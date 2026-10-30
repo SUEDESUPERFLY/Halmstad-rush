@@ -5,7 +5,7 @@ local DataConfig = {}
 
 DataConfig.StoreName = "HalmstadRush_Players"
 DataConfig.KeyPrefix = "Player_"
-DataConfig.SchemaVersion = 2
+DataConfig.SchemaVersion = 3
 
 DataConfig.AutosaveInterval = 120 -- sekunder
 DataConfig.Retries = 5 -- försök per DataStore-anrop

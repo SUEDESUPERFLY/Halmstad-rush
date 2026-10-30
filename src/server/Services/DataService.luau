@@ -34,6 +34,12 @@ export type PlayerData = {
 	Stats: { RacesFinished: number, RacesWon: number },
 	Receipts: { string }, -- senaste köp-ID:n (developer products), så att inget köp delas ut två gånger
 	Daily: { LastDay: number, Streak: number }, -- daglig belöning (dag = os.time() // 86400, UTC)
+	-- v3: dagliga utmaningar, kom igång-guiden, gömda laxar, bästa tider och veckans siffror
+	Challenges: { Day: number, Progress: { [string]: number }, Claimed: { [string]: boolean }, Bonus: boolean },
+	Tutorial: { Step: number, Progress: number }, -- Step > antal steg = klar
+	Salmon: { [string]: boolean },
+	Best: { [string]: number }, -- bästa racetid i sekunder per race-id
+	Weekly: { Week: number, Takedowns: number, BestTime: number, TargetClaimed: boolean },
 }
 
 type Profile = {
@@ -64,7 +70,22 @@ local function defaultData(): PlayerData
 		Stats = { RacesFinished = 0, RacesWon = 0 },
 		Receipts = {},
 		Daily = { LastDay = 0, Streak = 0 },
+		Challenges = { Day = 0, Progress = {}, Claimed = {}, Bonus = false },
+		Tutorial = { Step = 1, Progress = 0 },
+		Salmon = {},
+		Best = {},
+		Weekly = { Week = 0, Takedowns = 0, BestTime = 0, TargetClaimed = false },
 	}
+end
+
+local TUTORIAL_DONE = 99
+
+local function cleanNumber(value: any, max: number): number
+	local n = tonumber(value)
+	if not n or n ~= n or n < 0 then
+		return 0
+	end
+	return math.min(n, max)
 end
 
 local MAX_RECEIPTS = 50
@@ -81,7 +102,9 @@ end
 local function sanitize(raw: any): PlayerData
 	local source = if type(raw) == "table" then raw else {}
 	-- Migreringar: v1 -> v2 lade till Receipts och Daily (standardvärden från defaultData räcker).
-	-- Nästa gång: if (source.Version or 0) < 3 then ... end
+	-- v2 -> v3 lade till utmaningar, guiden, laxar, bästa tider och veckosiffror. Befintliga
+	-- spelare kan redan spela, så de hoppar över kom igång-guiden.
+	local sourceVersion = tonumber(source.Version) or 0
 	local data = defaultData()
 	data.Money = wholeNumber(source.Money)
 	data.Takedowns = wholeNumber(source.Takedowns)
@@ -118,6 +141,52 @@ local function sanitize(raw: any): PlayerData
 	if type(source.Daily) == "table" then
 		data.Daily.LastDay = wholeNumber(source.Daily.LastDay)
 		data.Daily.Streak = wholeNumber(source.Daily.Streak, 10000)
+	end
+	if type(source.Challenges) == "table" then
+		local c = source.Challenges
+		data.Challenges.Day = wholeNumber(c.Day)
+		data.Challenges.Bonus = c.Bonus == true
+		if type(c.Progress) == "table" then
+			for id, value in c.Progress do
+				if type(id) == "string" and #id <= 32 then
+					data.Challenges.Progress[id] = cleanNumber(value, 1e7)
+				end
+			end
+		end
+		if type(c.Claimed) == "table" then
+			for id, value in c.Claimed do
+				if type(id) == "string" and #id <= 32 and value == true then
+					data.Challenges.Claimed[id] = true
+				end
+			end
+		end
+	end
+	if sourceVersion > 0 and sourceVersion < 3 then
+		data.Tutorial.Step = TUTORIAL_DONE
+	elseif type(source.Tutorial) == "table" then
+		data.Tutorial.Step = math.max(1, wholeNumber(source.Tutorial.Step, TUTORIAL_DONE))
+		data.Tutorial.Progress = cleanNumber(source.Tutorial.Progress, 1e7)
+	end
+	if type(source.Salmon) == "table" then
+		for id, value in source.Salmon do
+			if type(id) == "string" and #id <= 8 and value == true then
+				data.Salmon[id] = true
+			end
+		end
+	end
+	if type(source.Best) == "table" then
+		for id, value in source.Best do
+			if type(id) == "string" and #id <= 32 then
+				data.Best[id] = cleanNumber(value, 3600)
+			end
+		end
+	end
+	if type(source.Weekly) == "table" then
+		local w = source.Weekly
+		data.Weekly.Week = wholeNumber(w.Week)
+		data.Weekly.Takedowns = wholeNumber(w.Takedowns)
+		data.Weekly.BestTime = cleanNumber(w.BestTime, 3600)
+		data.Weekly.TargetClaimed = w.TargetClaimed == true
 	end
 	data.Version = DataConfig.SchemaVersion
 	return data

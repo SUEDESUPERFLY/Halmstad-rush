@@ -15,6 +15,7 @@ local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Geometry = require(script.Parent.Parent.Map.Geometry)
 local PlayerMode = require(script.Parent.Parent.Util.PlayerMode)
+local GameEvents = require(script.Parent.Parent.Util.GameEvents)
 local CrashService = require(script.Parent.CrashService)
 local EconomyService = require(script.Parent.EconomyService)
 local NpcService = require(script.Parent.NpcService)
@@ -123,6 +124,17 @@ endActivity = function(ctx: Context, result: { [string]: any }?)
 	local payload = result or { Title = "Cancelled", Lines = {}, Reward = 0, Activity = ctx.Def.Name }
 	if payload.Reward > 0 then
 		EconomyService.AddMoney(ctx.Player, payload.Reward, ctx.Def.Name)
+	end
+	if result then -- avbrutna aktiviteter räknas inte
+		local kind = ctx.Def.Kind
+		GameEvents.Fire(ctx.Player, "ActivityFinished", 1, { Kind = kind, Id = ctx.Def.Id, Reward = payload.Reward })
+		if kind == "Delivery" then
+			GameEvents.Fire(ctx.Player, "Delivery")
+		elseif kind == "StuntJump" and payload.Reward > 0 then
+			GameEvents.Fire(ctx.Player, "StuntMedal")
+		elseif kind == "Drift" and payload.Reward > 0 then
+			GameEvents.Fire(ctx.Player, "DriftMedal")
+		end
 	end
 	remotes.ActivityResult:FireClient(ctx.Player, payload)
 end

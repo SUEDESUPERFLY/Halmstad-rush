@@ -31,6 +31,10 @@ Remotes.Names = {
 	ShopAction = "ShopAction", -- klient -> server, (action: "ClaimDaily"|"StudioTest", key: string?)
 	ShopState = "ShopState", -- server -> klient, (state: table) ägda pass och daglig belöning
 	Celebrate = "Celebrate", -- server -> alla, (position: Vector3) konfettiregn
+	GoalsState = "GoalsState", -- server -> klient, (state: table) dagens utmaningar, guiden, veckans race (bara visning)
+	CollectibleState = "CollectibleState", -- server -> klient, ({ Found: { string }, Total: number }) hittade laxar
+	LeaderboardState = "LeaderboardState", -- server -> klient, (state: table) topplistorna
+	CommunityAction = "CommunityAction", -- klient -> server, ("CheckGroup") kontrollera gruppmedlemskap igen
 }
 
 local FOLDER_NAME = "Remotes"

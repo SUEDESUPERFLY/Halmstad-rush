@@ -66,6 +66,40 @@ Spelet har egna, syntetiserade ljud i `assets/audio/` (inga licensproblem):
 3. När de godkänts (brukar ta några minuter) kopierar du **ID-numret** för varje ljud och skickar dem till mig.
 Vill du hellre ha annan musik: sök i Studio under *Toolbox → Audio → Music* (musik från Roblox eller APM är fri att använda) och skicka ID:t.
 
+### 5b. Badges (valfritt men rekommenderat)
+create.roblox.com → ditt spel → *Engagement* → **Badges** → *Create a Badge*. Bild: 512×512 (rund bild visas). Skapa de här och skicka ID:na till mig:
+
+| Nyckel | Namn | Beskrivning |
+|---|---|---|
+| Welcome | Welcome to Halmstad | Started your first drive in Halmstad. |
+| FirstRace | First race | Finished your first race. |
+| RaceWin | Race winner | Won a race. |
+| Takedowns100 | 100 takedowns | Took down 100 traffic cars. |
+| Galgberget | Top of Galgberget | Drove up to the lookout tower on Galgberget. |
+| Tylosand | Beach day in Tylösand | Drove all the way to Tylösand. |
+| AllSalmon | Salmon hunter | Found all 30 hidden salmon. |
+| DailyAll | Daily hero | Completed all daily challenges in one day. |
+
+Roblox brukar låta dig skapa några badges gratis per dag. Därefter kostar de Robux, så skapa dem gärna över ett par dagar.
+
+### 5c. Roblox-grupp (valfritt)
+En grupp gör att du kan nå spelarna med nyheter, och medlemmar får lacken **Rush blue** i spelet.
+1. roblox.com → *Communities* → **Create** (kostar Robux). Namn t.ex. `Halmstad Rush`.
+2. Kopiera gruppens ID (siffrorna i adressen) och skicka det till mig.
+3. Valfritt: flytta spelet till gruppen senare. Fråga mig först, eftersom ägarbyte påverkar sparad data och pass.
+
+### 5d. Privata servrar
+*Game Settings → Monetization* (eller create.roblox.com → *Monetization → Private Servers*): slå på **Private Servers**. Välj *Free* eller ett lågt pris (t.ex. 25 R$/månad). Det låter kompisgäng och skolklasser spela själva.
+
+### 5e. Butikssidan och spridning
+- **Titel:** `Halmstad Rush 🚗 Drift & Crash` (kort och tydlig).
+- **Beskrivning (engelska först, svenska under):** berätta om den riktiga staden, drift, takedowns, race, dagliga utmaningar och 30 gömda laxar.
+- **Ikon (512×512):** en färgglad bil i drift, stor och tydlig, lite text.
+- **Tumnaglar (1920×1080):** krock framför slottet, drift på Stora torg, hopp på Östra stranden. Lägg gärna till en kort video.
+- **Översättning:** create.roblox.com → *Localization*: lägg till svenska och skriv in den svenska titeln och beskrivningen.
+- **Spridning:** korta klipp på TikTok/YouTube Shorts ("Jag krockade på Stora torg i Roblox"), lokal press (Hallandsposten), Destination Halmstad och skolor.
+- **Annonser:** create.roblox.com → *Ads*. Börja med en liten budget först när spelarna stannar kvar (titta i *Analytics → Retention*).
+
 ### 6. Testa innan du släpper
 - **Flera spelare:** *Test → Clients and Servers* → 2–3 spelare → *Start*. Prova race, kull och att spelarna är spöken mot varandra i fri körning.
 - **Mobil i Studio:** *Test → Device* → välj en telefon.

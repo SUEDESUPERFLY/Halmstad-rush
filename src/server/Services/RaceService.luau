@@ -24,6 +24,7 @@ local NpcService = require(script.Parent.NpcService)
 local RespawnService = require(script.Parent.RespawnService)
 local VehicleService = require(script.Parent.VehicleService)
 local PlayerMode = require(script.Parent.Parent.Util.PlayerMode)
+local GameEvents = require(script.Parent.Parent.Util.GameEvents)
 
 type Checkpoint = {
 	Position: Vector3,
@@ -222,6 +223,11 @@ local function finishRace(session: Session)
 						data.Stats.RacesWon += 1
 					end
 				end)
+				local info = { RaceId = session.Race.Id, Time = participant.FinishTime, Position = position }
+				GameEvents.Fire(player, "RaceFinished", 1, info)
+				if position <= 3 then
+					GameEvents.Fire(player, "RacePodium", 1, info)
+				end
 			end
 			for _, result in results do
 				if result.UserId == player.UserId and result.Reward > 0 then

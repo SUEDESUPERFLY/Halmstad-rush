@@ -28,7 +28,9 @@ export type Upgrade = {
 	PerLevel: { [string]: number }, -- ökning av Stats per nivå
 }
 
-export type PaintColor = { Id: string, Name: string, Color: Color3, Pass: string? } -- Pass = kräver game pass
+-- Pass = kräver game pass. Unlock = låses upp i spelet (spelarattributet Unlock_<namn>):
+-- "AllSalmon" (alla gömda laxar) eller "Group" (medlem i spelets Roblox-grupp).
+export type PaintColor = { Id: string, Name: string, Color: Color3, Pass: string?, Unlock: string? }
 
 local CarCatalog = {}
 
@@ -108,6 +110,9 @@ CarCatalog.Colors = {
 	{ Id = "NeonPink", Name = "Neon pink", Color = Color3.fromRGB(255, 60, 180), Pass = "VipPaint" },
 	{ Id = "NeonGreen", Name = "Neon green", Color = Color3.fromRGB(60, 255, 120), Pass = "VipPaint" },
 	{ Id = "Midnight", Name = "Midnight", Color = Color3.fromRGB(20, 22, 60), Pass = "VipPaint" },
+	-- Upplåsta i spelet (gratis)
+	{ Id = "SalmonSilver", Name = "Salmon silver", Color = Color3.fromRGB(196, 206, 220), Unlock = "AllSalmon" },
+	{ Id = "RushBlue", Name = "Rush blue", Color = Color3.fromRGB(0, 120, 215), Unlock = "Group" },
 } :: { PaintColor }
 
 CarCatalog.DefaultColor = "Red"

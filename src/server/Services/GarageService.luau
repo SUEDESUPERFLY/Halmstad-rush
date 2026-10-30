@@ -100,6 +100,11 @@ local function paint(player: Player, data: DataService.PlayerData, car: CarCatal
 		notify(player, Locale.Msg("%s needs VIP Paint (in the SHOP)", Locale.Msg(color.Name)))
 		return
 	end
+	if color.Unlock and player:GetAttribute("Unlock_" .. color.Unlock) ~= true then
+		local how = if color.Unlock == "AllSalmon" then "Find all hidden salmon" else "Join the game's Roblox group"
+		notify(player, Locale.Msg("%s is locked: %s", Locale.Msg(color.Name), Locale.Msg(how)))
+		return
+	end
 	if not EconomyService.Spend(player, CarCatalog.PaintCost) then
 		notify(player, Locale.Msg("Not enough money (%d kr)", CarCatalog.PaintCost))
 		return
