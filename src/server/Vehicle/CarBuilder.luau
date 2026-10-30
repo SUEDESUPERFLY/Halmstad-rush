@@ -220,6 +220,20 @@ function CarBuilder.Build(bodyColor: Color3, ownerUserId: number, style: string?
 	return model
 end
 
+-- Neonunderrede (game pass, rent kosmetiskt)
+function CarBuilder.AddUnderglow(model: Model, color: Color3)
+	local chassis = model.PrimaryPart :: BasePart
+	if chassis and not model:FindFirstChild("UnderglowPass") then
+		local glow = makePart({ Name = "UnderglowPass", Size = Vector3.new(5.4, 0.1, 9.6), Color = color, Material = Enum.Material.Neon })
+		weldTo(glow, chassis, CFrame.new(0, -Geometry.ChassisSize.Y / 2 - 0.1, 0))
+		local light = Instance.new("PointLight")
+		light.Color = color
+		light.Range = 12
+		light.Brightness = 2
+		light.Parent = glow
+	end
+end
+
 -- Lackerar om en färdig bil (alla delar med attributet Paint).
 function CarBuilder.Paint(model: Model, color: Color3)
 	for _, descendant in model:GetDescendants() do

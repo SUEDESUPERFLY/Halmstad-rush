@@ -114,7 +114,7 @@ build/      -> byggd placefil (committas)
   - Autosparning var `AutosaveInterval`. Spelaren sparas och låset släpps vid `PlayerRemoving` och `BindToClose`.
   - Misslyckad laddning ger en icke-sparad profil som aldrig skriver över den riktiga datan.
   - Opublicerat place eller Studio utan API-åtkomst: data sparas bara i minnet, och spelaren får en notis.
-- **Schema v1** (`PlayerData`): `Version`, `Money`, `Takedowns`, `OwnedCars[id] = { Upgrades = { Engine, Grip, Turbo }, Color }`, `SelectedCar`, `Stats = { RacesFinished, RacesWon }`.
+- **Schema v1 (nu v2, se fas 7)** (`PlayerData`): `Version`, `Money`, `Takedowns`, `OwnedCars[id] = { Upgrades = { Engine, Grip, Turbo }, Color }`, `SelectedCar`, `Stats = { RacesFinished, RacesWon }`.
   - `sanitize` migrerar och validerar allt som läses in: okända bilar och färger tas bort, nivåer kläms, och startbilen finns alltid.
   - Nya fält kräver ny `SchemaVersion` och en migrering i `sanitize`.
 - **All ändring av sparad data** går via `DataService.Update(player, fn)`. Den markerar profilen för sparning och skickar `Changed`, som speglas till leaderstats (`EconomyService`) och till klienten (`GarageService` → `ProfileUpdated`).
@@ -158,6 +158,18 @@ build/      -> byggd placefil (committas)
 - **`NpcService`** har nu `SpawnOnRoute`, `Npc.Target` (styr mot en punkt), `Npc.RespawnAt` och `OnEvent`.
 - **Klient:** `ActivityController` sköter remotes, ett ljus vid målet med avstånd och "håll still" vid `CountdownTo`. `ActivityUI` har startknappen (E), panelen (avbryt), nedräkningen och resultatet.
 
+## Butik och daglig belöning (fas 7)
+- **`ShopConfig`:** game passes VIP-lack (6 extra färger), Neonunderrede och Snabbresa+ (1 s cooldown), samt developer products Konfettiregn och Stöd utvecklaren.
+  - **Inget säljs som ger fartfördel, kronor, bilar eller slump.**
+  - `Id = 0` betyder att köpet inte är skapat på roblox.com än. Då visas "Inte i butiken än", och i Studio finns knappen "Testa (Studio)" (servern kontrollerar `RunService:IsStudio()`).
+- **`ShopService`:**
+  - Ägda pass blir spelarattribut `Pass_<Key>`. De läses av `GarageService` (VIP-färger), `VehicleService` (underrede) och `RespawnService` (snabbresa).
+  - **`ProcessReceipt`:** köpet delas ut, köp-ID:t sparas i profilen (`Receipts`, senaste 50) och sparas direkt (`DataService.SaveNow`). Först därefter returneras `PurchaseGranted`. Ett köp-ID som redan finns returneras som Granted utan att delas ut igen.
+  - **Daglig belöning:** UTC-dag (`os.time() // 86400`) och streak i profilen (`Daily`). Belöningen räknas av `ShopConfig.DailyReward`.
+- **Schema v2:** `Receipts` och `Daily` har lagts till. `sanitize` fyller på standardvärden för äldre profiler.
+- **Klient:** `ShopUI` öppnas med B eller SHOP-knappen. Dagens belöning visas som en notis vid start. Konfetti visas via `Celebrate` och `EffectsController.Confetti`.
+- **När du vill sälja på riktigt:** skapa passen och produkterna på create.roblox.com (spelet → Monetization) och skriv in ID:na i `ShopConfig`.
+
 ## Kontroller
 | | Tangentbord | Handkontroll | Touch |
 |---|---|---|---|
@@ -171,6 +183,7 @@ build/      -> byggd placefil (committas)
 | Starta/gå med i race (vid startlinjen) | E | B | knappen START RACE |
 | Garage | G | – | GARAGE-knappen |
 | Starta aktivitet (vid markören) | E | B | knappen STARTA |
+| Butik | B | – | SHOP-knappen |
 
 ## Beslut
 | Beslut | Val |
@@ -191,7 +204,7 @@ build/      -> byggd placefil (committas)
 - [x] Fas 4: Första racet + poäng/pengar (i minnet)
 - [x] Fas 5: DataStore (retry, sessionslås, versionerat schema), garage, bilköp, uppgraderingar, lackering
 - [ ] Fas 6: Stunts, budjobb, kull-jaktläge, krockläge *(byggd, väntar på test)*
-- [ ] Fas 7: Butik, game passes, developer products, daglig belöning
+- [ ] Fas 7: Butik, game passes, developer products, daglig belöning *(byggd, väntar på test)*
 - [ ] Fas 8: Ljud, UI, minikarta, mobiloptimering
 
 ## Kända begränsningar / att göra

@@ -20,6 +20,7 @@ local modules = {
 	UI:WaitForChild("RaceUI"),
 	UI:WaitForChild("GarageUI"),
 	UI:WaitForChild("ActivityUI"),
+	UI:WaitForChild("ShopUI"),
 }
 
 for _, module in modules do

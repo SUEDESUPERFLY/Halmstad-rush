@@ -108,6 +108,29 @@ function EffectsController.Debris(position: Vector3, direction: Vector3, color: 
 	end
 end
 
+-- Konfettiregn (developer product). Syns för alla i närheten.
+function EffectsController.Confetti(position: Vector3)
+	local part = emitterPart(position + Vector3.new(0, 12, 0))
+	local confetti = Instance.new("ParticleEmitter")
+	confetti.Texture = SPARK_TEXTURE
+	confetti.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 80)),
+		ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 220, 60)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(80, 220, 120)),
+		ColorSequenceKeypoint.new(0.75, Color3.fromRGB(80, 160, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(220, 90, 255)),
+	})
+	confetti.Size = NumberSequence.new(0.8)
+	confetti.Lifetime = NumberRange.new(2, 3.5)
+	confetti.Speed = NumberRange.new(25, 45)
+	confetti.SpreadAngle = Vector2.new(70, 70)
+	confetti.Acceleration = Vector3.new(0, -25, 0)
+	confetti.RotSpeed = NumberRange.new(-200, 200)
+	confetti.Rate = 0
+	confetti.Parent = part
+	confetti:Emit(150)
+end
+
 -- Oskärpa och avmättade färger under krockkameran (känns som slow motion).
 function EffectsController.SlowMotionLook(duration: number)
 	local fadeIn = TweenInfo.new(0.15)

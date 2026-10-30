@@ -31,6 +31,8 @@ export type PlayerData = {
 	OwnedCars: { [string]: CarData },
 	SelectedCar: string,
 	Stats: { RacesFinished: number, RacesWon: number },
+	Receipts: { string }, -- senaste köp-ID:n (developer products), så att inget köp delas ut två gånger
+	Daily: { LastDay: number, Streak: number }, -- daglig belöning (dag = os.time() // 86400, UTC)
 }
 
 type Profile = {
@@ -59,8 +61,12 @@ local function defaultData(): PlayerData
 		},
 		SelectedCar = CarCatalog.StarterCar,
 		Stats = { RacesFinished = 0, RacesWon = 0 },
+		Receipts = {},
+		Daily = { LastDay = 0, Streak = 0 },
 	}
 end
+
+local MAX_RECEIPTS = 50
 
 local function wholeNumber(value: any, max: number?): number
 	local n = tonumber(value)
@@ -73,8 +79,8 @@ end
 -- Migrerar äldre versioner och validerar allt. Okända bilar och färger kastas, nivåer kläms.
 local function sanitize(raw: any): PlayerData
 	local source = if type(raw) == "table" then raw else {}
-	-- Migreringar läggs här när schemat ändras, t.ex.:
-	-- if (source.Version or 0) < 2 then source.NyttFält = ... end
+	-- Migreringar: v1 -> v2 lade till Receipts och Daily (standardvärden från defaultData räcker).
+	-- Nästa gång: if (source.Version or 0) < 3 then ... end
 	local data = defaultData()
 	data.Money = wholeNumber(source.Money)
 	data.Takedowns = wholeNumber(source.Takedowns)
@@ -100,6 +106,17 @@ local function sanitize(raw: any): PlayerData
 	if type(source.Stats) == "table" then
 		data.Stats.RacesFinished = wholeNumber(source.Stats.RacesFinished)
 		data.Stats.RacesWon = wholeNumber(source.Stats.RacesWon)
+	end
+	if type(source.Receipts) == "table" then
+		for _, receipt in source.Receipts do
+			if type(receipt) == "string" and #data.Receipts < MAX_RECEIPTS then
+				table.insert(data.Receipts, receipt)
+			end
+		end
+	end
+	if type(source.Daily) == "table" then
+		data.Daily.LastDay = wholeNumber(source.Daily.LastDay)
+		data.Daily.Streak = wholeNumber(source.Daily.Streak, 10000)
 	end
 	data.Version = DataConfig.SchemaVersion
 	return data
@@ -245,6 +262,21 @@ function DataService.Update(player: Player, mutate: (data: PlayerData) -> ()): b
 	profile.Dirty = true
 	DataService.Changed:Fire(player, profile.Data)
 	return true
+end
+
+-- Sparar direkt (används innan ett Robux-köp bekräftas). Returnerar true om det lyckades.
+function DataService.SaveNow(player: Player): boolean
+	return save(player, false)
+end
+
+-- Kommer ihåg ett köp-ID (de senaste MAX_RECEIPTS).
+function DataService.AddReceipt(player: Player, purchaseId: string)
+	DataService.Update(player, function(data)
+		table.insert(data.Receipts, purchaseId)
+		while #data.Receipts > MAX_RECEIPTS do
+			table.remove(data.Receipts, 1)
+		end
+	end)
 end
 
 function DataService.IsPersistent(player: Player): boolean

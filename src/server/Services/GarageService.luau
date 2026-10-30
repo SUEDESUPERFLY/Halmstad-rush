@@ -95,6 +95,10 @@ local function paint(player: Player, data: DataService.PlayerData, car: CarCatal
 	if not owned or not color or owned.Color == color.Id then
 		return
 	end
+	if color.Pass and player:GetAttribute("Pass_" .. color.Pass) ~= true then
+		notify(player, color.Name .. " kräver VIP-lack (finns i SHOP)")
+		return
+	end
 	if not EconomyService.Spend(player, CarCatalog.PaintCost) then
 		notify(player, ("Not enough money (%d kr)"):format(CarCatalog.PaintCost))
 		return

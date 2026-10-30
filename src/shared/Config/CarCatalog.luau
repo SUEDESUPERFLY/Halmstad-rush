@@ -28,7 +28,7 @@ export type Upgrade = {
 	PerLevel: { [string]: number }, -- ökning av Stats per nivå
 }
 
-export type PaintColor = { Id: string, Name: string, Color: Color3 }
+export type PaintColor = { Id: string, Name: string, Color: Color3, Pass: string? } -- Pass = kräver game pass
 
 local CarCatalog = {}
 
@@ -101,6 +101,13 @@ CarCatalog.Colors = {
 	{ Id = "White", Name = "Vit", Color = Color3.fromRGB(240, 240, 240) },
 	{ Id = "Silver", Name = "Silver", Color = Color3.fromRGB(170, 175, 185) },
 	{ Id = "Black", Name = "Svart", Color = Color3.fromRGB(30, 30, 35) },
+	-- VIP-lack (game pass, rent kosmetiskt)
+	{ Id = "Gold", Name = "Guld", Color = Color3.fromRGB(212, 175, 55), Pass = "VipPaint" },
+	{ Id = "Chrome", Name = "Krom", Color = Color3.fromRGB(225, 230, 240), Pass = "VipPaint" },
+	{ Id = "Pearl", Name = "Pärlvit", Color = Color3.fromRGB(250, 245, 235), Pass = "VipPaint" },
+	{ Id = "NeonPink", Name = "Neonrosa", Color = Color3.fromRGB(255, 60, 180), Pass = "VipPaint" },
+	{ Id = "NeonGreen", Name = "Neongrön", Color = Color3.fromRGB(60, 255, 120), Pass = "VipPaint" },
+	{ Id = "Midnight", Name = "Midnatt", Color = Color3.fromRGB(20, 22, 60), Pass = "VipPaint" },
 } :: { PaintColor }
 
 CarCatalog.DefaultColor = "Red"

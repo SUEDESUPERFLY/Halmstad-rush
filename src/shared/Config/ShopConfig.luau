@@ -1,0 +1,63 @@
+--!strict
+-- Butik: game passes, developer products och daglig belöning.
+--
+-- Rättvisa (se CLAUDE.md): Robux ger bara kosmetik eller bekvämlighet. Inga kronor,
+-- bilar, uppgraderingar eller fartfördelar säljs för Robux, och inget är slumpat.
+--
+-- ID:n skapas på create.roblox.com (spelet → Monetization → Passes / Developer Products)
+-- och skrivs in här. Med Id = 0 är köpet avstängt i spelet, men kan provas i Studio
+-- med knappen "Testa (Studio)" (servern tillåter det bara när RunService:IsStudio()).
+
+export type Pass = { Key: string, Id: number, Name: string, Description: string }
+export type Product = { Key: string, Id: number, Name: string, Description: string }
+
+local ShopConfig = {}
+
+ShopConfig.Passes = {
+	{ Key = "VipPaint", Id = 0, Name = "VIP-lack", Description = "6 exklusiva lackfärger: guld, krom, pärlvit, neonrosa, neongrön och midnatt." },
+	{ Key = "Underglow", Id = 0, Name = "Neonunderrede", Description = "Neonljus under alla dina bilar. Rent utseende." },
+	{ Key = "FastTravel", Id = 0, Name = "Snabbresa+", Description = "Ingen väntetid mellan snabbresor. Bekvämlighet, ingen fartfördel." },
+} :: { Pass }
+
+ShopConfig.Products = {
+	{ Key = "Confetti", Id = 0, Name = "Konfettiregn", Description = "Fira med konfetti över din bil – alla i närheten ser det." },
+	{ Key = "Support", Id = 0, Name = "Stöd utvecklaren", Description = "Ett stort tack! Ger ingen fördel i spelet." },
+} :: { Product }
+
+ShopConfig.StudioTestPurchases = true
+
+-- Daglig belöning: Base + PerStreakDay för varje dag i rad (max MaxStreakBonusDays dagar).
+ShopConfig.Daily = {
+	Base = 100,
+	PerStreakDay = 50,
+	MaxStreakBonusDays = 6,
+}
+
+function ShopConfig.DailyReward(streak: number): number
+	local daily = ShopConfig.Daily
+	return daily.Base + daily.PerStreakDay * math.clamp(streak - 1, 0, daily.MaxStreakBonusDays)
+end
+
+function ShopConfig.FindPass(key: string): Pass?
+	for _, pass in ShopConfig.Passes do
+		if pass.Key == key then
+			return pass
+		end
+	end
+	return nil
+end
+
+function ShopConfig.FindProduct(key: string): Product?
+	for _, product in ShopConfig.Products do
+		if product.Key == key then
+			return product
+		end
+	end
+	return nil
+end
+
+function ShopConfig.PassAttribute(key: string): string
+	return "Pass_" .. key
+end
+
+return ShopConfig

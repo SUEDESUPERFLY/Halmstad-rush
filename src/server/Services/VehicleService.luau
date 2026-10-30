@@ -171,6 +171,9 @@ local function createCar(player: Player, character: Model, at: CFrame?, group: s
 	local slot = claimSlot()
 	local model = CarBuilder.Build(color, player.UserId, car.Style)
 	local speedCap = applyStats(model, carId, stats)
+	if player:GetAttribute("Pass_Underglow") == true then
+		CarBuilder.AddUnderglow(model, Color3.fromRGB(80, 220, 255))
+	end
 	local collisionGroup = group or CAR_GROUP
 	setCollisionGroup(model, collisionGroup)
 	local spawnCFrame = at or getSpawnCFrame(slot)

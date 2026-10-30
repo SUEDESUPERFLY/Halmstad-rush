@@ -139,7 +139,8 @@ local function onTeleportRequested(player: Player, locationId: unknown)
 		return
 	end
 	local now = os.clock()
-	if now - (lastTeleport[player] or -math.huge) < Settings.TeleportCooldown then
+	local cooldown = if player:GetAttribute("Pass_FastTravel") == true then 1 else Settings.TeleportCooldown
+	if now - (lastTeleport[player] or -math.huge) < cooldown then
 		notifyRemote:FireClient(player, "Wait a moment…", "info")
 		return
 	end

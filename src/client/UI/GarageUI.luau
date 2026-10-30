@@ -203,6 +203,11 @@ local function renderDetails()
 		swatch.Text = ""
 		swatch.BackgroundColor3 = color.Color
 		swatch.Parent = swatches
+		if color.Pass and Players.LocalPlayer:GetAttribute("Pass_" .. color.Pass) ~= true then
+			swatch.Text = "🔒"
+			swatch.TextScaled = true
+			swatch.TextColor3 = Color3.new(1, 1, 1)
+		end
 		corner(swatch, 18)
 		if owned.Color == color.Id then
 			local stroke = Instance.new("UIStroke")

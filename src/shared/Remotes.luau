@@ -28,6 +28,9 @@ Remotes.Names = {
 	LeaveActivity = "LeaveActivity", -- klient -> server, inga argument
 	ActivityState = "ActivityState", -- server -> klient, (state: table) titel, mål, tid, poäng (bara visning)
 	ActivityResult = "ActivityResult", -- server -> klient, (result: table) slutresultat och belöning
+	ShopAction = "ShopAction", -- klient -> server, (action: "ClaimDaily"|"StudioTest", key: string?)
+	ShopState = "ShopState", -- server -> klient, (state: table) ägda pass och daglig belöning
+	Celebrate = "Celebrate", -- server -> alla, (position: Vector3) konfettiregn
 }
 
 local FOLDER_NAME = "Remotes"
