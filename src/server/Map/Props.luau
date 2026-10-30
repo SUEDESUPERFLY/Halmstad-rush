@@ -20,10 +20,23 @@ local function model(parent: Instance, name: string): Model
 	return m
 end
 
+-- Lövträd (lind, ek, lönn): stam och en krona av tre klot i lite olika grönt.
 function Props.Tree(parent: Instance, base: Vector3, rng: Random)
-	local trunk = Geometry.Cylinder(parent, "TreeTrunk", base - Vector3.new(0, 1, 0), 1.2, 11, Color3.fromRGB(110, 80, 55), Enum.Material.Wood)
+	local scale = rng:NextNumber(0.85, 1.25)
+	local trunk = Geometry.Cylinder(parent, "TreeTrunk", base - Vector3.new(0, 1, 0), 1.1 * scale, 11 * scale, Color3.fromRGB(105, 82, 60), Enum.Material.Wood)
 	Geometry.Obstacle(trunk)
-	Geometry.Ball(parent, "TreeCrown", base + Vector3.new(0, 13, 0), rng:NextNumber(5, 7), Color3.fromRGB(70, 140, 70))
+	local green = Color3.fromRGB(rng:NextInteger(60, 90), rng:NextInteger(120, 150), rng:NextInteger(50, 70))
+	local crowns = {
+		{ Vector3.new(0, 13, 0), 6 },
+		{ Vector3.new(2.5, 15.5, 1.5), 4.5 },
+		{ Vector3.new(-2.5, 14.5, -1.5), 4.5 },
+	}
+	for i, crown in crowns do
+		local ball = Geometry.Ball(parent, "TreeCrown", base + crown[1] * scale, crown[2] * scale * rng:NextNumber(0.9, 1.1), green:Lerp(Color3.fromRGB(110, 160, 70), (i - 1) * 0.12))
+		ball.Material = Enum.Material.LeafyGrass
+		ball.CanQuery = false
+		ball.CanCollide = false
+	end
 end
 
 function Props.Pine(parent: Instance, base: Vector3, rng: Random)
@@ -31,8 +44,12 @@ function Props.Pine(parent: Instance, base: Vector3, rng: Random)
 	local trunk = Geometry.Cylinder(parent, "PineTrunk", base - Vector3.new(0, 2, 0), 1, height * 0.5 + 2, Color3.fromRGB(100, 70, 50), Enum.Material.Wood)
 	Geometry.Obstacle(trunk)
 	local green = Color3.fromRGB(40, 100, 60)
-	Geometry.Ball(parent, "PineLow", base + Vector3.new(0, height * 0.5, 0), height * 0.32, green)
-	Geometry.Ball(parent, "PineHigh", base + Vector3.new(0, height * 0.85, 0), height * 0.22, green)
+	for _, info in { { "PineLow", 0.5, 0.32 }, { "PineHigh", 0.85, 0.22 } } do
+		local ball = Geometry.Ball(parent, info[1], base + Vector3.new(0, height * info[2], 0), height * info[3], green)
+		ball.Material = Enum.Material.LeafyGrass
+		ball.CanQuery = false
+		ball.CanCollide = false
+	end
 end
 
 -- Gatlykta. `towardRoad` är riktningen från stolpen ut över gatan.

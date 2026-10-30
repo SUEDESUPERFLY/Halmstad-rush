@@ -33,7 +33,9 @@ def cdata(text: str) -> str:
 
 
 def property_xml(key: str, value: object) -> str:
-    """Enkla egenskaper från $properties: bool, heltal, decimaltal och text."""
+    """Enkla egenskaper från $properties: bool, heltal, decimaltal, text och enum ({"Enum": n})."""
+    if isinstance(value, dict) and set(value) == {"Enum"} and isinstance(value["Enum"], int):
+        return f'<token name="{key}">{value["Enum"]}</token>'
     if isinstance(value, bool):
         return f'<bool name="{key}">{"true" if value else "false"}</bool>'
     if isinstance(value, int):

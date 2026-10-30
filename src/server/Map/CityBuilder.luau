@@ -8,6 +8,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local MapData = require(ReplicatedStorage.Shared.Map.MapData)
+local CityDetails = require(script.Parent.CityDetails)
 local Geometry = require(script.Parent.Geometry)
 local CityGrid = require(script.Parent.Generated.CityGrid)
 local CityBuildings = require(script.Parent.Generated.CityBuildings)
@@ -26,6 +27,9 @@ local SURFACE: { [string]: Enum.Material } = {
 	A = Material.Asphalt,
 	Y = Material.Asphalt,
 	B = Material.Pavement,
+	K = Material.Pavement, -- trottoar: kvarterskant mot gata
+	C = Material.Cobblestone, -- gårdar i stenstaden
+	L = Material.Grass, -- gräsmattor och trädgårdar utanför centrum
 	P = Material.Grass,
 	G = Material.Concrete,
 	F = Material.LeafyGrass,
@@ -65,6 +69,28 @@ function CityBuilder.CodeAt(x: number, z: number): string?
 		return nil
 	end
 	return codeOf[buffer.readu8(codeBytes, cz * CityGrid.Width + cx)]
+end
+
+local function isRoad(code: string?): boolean
+	return code == "A" or code == "Y" or code == "D"
+end
+
+-- Som CodeAt, men kvarteren delas upp: trottoar (K) närmast gatan, gårdar (C) i
+-- stenstaden och gräs (L) längre ut. Zonerna följer husgeneratorn (750 / 1500 studs).
+function CityBuilder.SurfaceCodeAt(x: number, z: number): string?
+	local code = CityBuilder.CodeAt(x, z)
+	if code ~= "B" then
+		return code
+	end
+	if
+		isRoad(CityBuilder.CodeAt(x + CELL, z))
+		or isRoad(CityBuilder.CodeAt(x - CELL, z))
+		or isRoad(CityBuilder.CodeAt(x, z + CELL))
+		or isRoad(CityBuilder.CodeAt(x, z - CELL))
+	then
+		return "K"
+	end
+	return if math.sqrt(x * x + z * z) < 750 then "C" else "L"
 end
 
 -- Skriver terräng för ett rektangulärt område (i hela celler) med en materialfunktion.
@@ -166,6 +192,7 @@ local function setTerrainLook()
 	local terrain = workspace.Terrain
 	terrain:SetMaterialColor(Material.Asphalt, Color3.fromRGB(62, 64, 70))
 	terrain:SetMaterialColor(Material.Pavement, Color3.fromRGB(176, 170, 160))
+	terrain:SetMaterialColor(Material.Cobblestone, Color3.fromRGB(140, 132, 122))
 	terrain:SetMaterialColor(Material.Concrete, Color3.fromRGB(150, 150, 152))
 	terrain:SetMaterialColor(Material.Grass, Color3.fromRGB(96, 140, 70))
 	terrain:SetMaterialColor(Material.LeafyGrass, Color3.fromRGB(128, 150, 80))
@@ -204,7 +231,7 @@ function CityBuilder.BuildTerrain()
 	local countX = CityGrid.Width
 	local countZ = CityGrid.Height
 	writeArea(CityGrid.OriginX, CityGrid.OriginZ, countX, countZ, function(x, z)
-		return CityBuilder.CodeAt(x, z) or "P"
+		return CityBuilder.SurfaceCodeAt(x, z) or "P"
 	end)
 
 	-- 5) Galgbergets norra del utanför kartan, och sanddyner
@@ -236,7 +263,7 @@ end
 local STYLES = {
 	-- 0: stenstaden i centrum (puts i varma toner)
 	[0] = {
-		Material = Material.SmoothPlastic,
+		Material = CityDetails.Material("Plaster", Material.SmoothPlastic),
 		Colors = {
 			Color3.fromRGB(226, 196, 150),
 			Color3.fromRGB(236, 226, 204),
@@ -274,6 +301,26 @@ local STYLES = {
 	},
 }
 
+-- Flyttar in husväggar som står mot en gata, så att trottoaren syns.
+local SIDEWALK = 3
+local function pullBackFromRoads(px: number, pz: number, width: number, depth: number): (number, number, number, number)
+	local minX, maxX = px - width / 2, px + width / 2
+	local minZ, maxZ = pz - depth / 2, pz + depth / 2
+	if isRoad(CityBuilder.CodeAt(minX - 2, pz)) and maxX - minX > SIDEWALK + 6 then
+		minX += SIDEWALK
+	end
+	if isRoad(CityBuilder.CodeAt(maxX + 2, pz)) and maxX - minX > SIDEWALK + 6 then
+		maxX -= SIDEWALK
+	end
+	if isRoad(CityBuilder.CodeAt(px, minZ - 2)) and maxZ - minZ > SIDEWALK + 6 then
+		minZ += SIDEWALK
+	end
+	if isRoad(CityBuilder.CodeAt(px, maxZ + 2)) and maxZ - minZ > SIDEWALK + 6 then
+		maxZ -= SIDEWALK
+	end
+	return (minX + maxX) / 2, (minZ + maxZ) / 2, maxX - minX, maxZ - minZ
+end
+
 function CityBuilder.BuildBuildings(parent: Instance)
 	local folder = Instance.new("Folder")
 	folder.Name = "Buildings"
@@ -282,8 +329,11 @@ function CityBuilder.BuildBuildings(parent: Instance)
 	for x, z, w, d, h, s in (CityBuildings :: string):gmatch("(%-?%d+),(%-?%d+),(%d+),(%d+),(%d+),(%d)") do
 		local px, pz = tonumber(x) :: number, tonumber(z) :: number
 		local width, depth, height = tonumber(w) :: number, tonumber(d) :: number, tonumber(h) :: number
-		local style = STYLES[tonumber(s) :: number] or STYLES[0]
-		local base = MapData.GroundHeightAt(px, pz) - 1
+		local styleIndex = tonumber(s) :: number
+		local style = STYLES[styleIndex] or STYLES[0]
+		px, pz, width, depth = pullBackFromRoads(px, pz, width, depth)
+		local ground = MapData.GroundHeightAt(px, pz)
+		local base = ground - 1
 		local part = Geometry.Part(
 			folder,
 			"Building",
@@ -293,8 +343,9 @@ function CityBuilder.BuildBuildings(parent: Instance)
 			style.Material
 		)
 		Geometry.Obstacle(part)
+		CityDetails.DecorateBuilding(folder, px, pz, width, depth, ground, height, styleIndex, rng)
 		count += 1
-		if count % 500 == 0 then
+		if count % 300 == 0 then
 			task.wait()
 		end
 	end

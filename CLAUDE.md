@@ -190,6 +190,18 @@ build/      -> byggd placefil (committas)
   - Dekordelar kastar inga skuggor, och plåtdelarna är färre på pekskärm.
 - **ScreenGui-ordning (`DisplayOrder`):** fönster (garage och butik) 10, snabbresemenyn 5, övrigt 0.
 
+## Snyggare stad (fas 9)
+- Inspiration: stadsspel som Greenville, Brookhaven och Driving Empire. Det som gör deras städer snygga är sammanhållna färger, tak, fönster, trottoarer, träd, gatlyktor, vägmarkeringar och mjukt ljus med skuggor. Ingen betafunktion används.
+- **`CityDetails`** (`src/server/Map/`):
+  - Sadeltak (två `WedgePart`) med nocken längs långsidan på stenstaden, flerfamiljshusen och villorna. Tegel (`ClayRoofTiles`), takpapp (`RoofShingles`) eller plåt. Offentliga tegelbyggnader har platt tak med ljus takfot.
+  - Ett fönsterband per våning (var 7:e stud från 3,5 över marken). Bandet sticker ut på långsidorna men inte på gavlarna. Fönster är dekor.
+  - Streckad mittlinje (6 + 8 studs) och gatlyktor (`Props.StreetLamp`, ungefär var 60:e stud, varannan sida, minst 40 studs mellan lyktor) längs rutterna i `CityRoutes`. Lyktan står vid första ruta som inte är gata.
+  - Lövträd i parkerna (kod P, rutnät 26 studs, 45 %), tallar på Galgberget. Inga träd inom 8 studs från gata, vatten eller större byggnad, och inte vid landmärkena (`keepOut` i `MapService`). Trädkronorna går att köra igenom.
+  - De nya materialen hämtas med `CityDetails.Material(name, fallback)`, så att bygget inte kraschar om ett material saknas.
+- **Trottoarer och gårdar:** `CityBuilder.SurfaceCodeAt` delar kvarteren (B) i trottoar (K, `Pavement`) närmast gatan, gårdar (C, `Cobblestone`) i stenstaden (under 750 studs från Stora torg) och gräs (L) längre ut. Husväggar mot gata flyttas in 3 studs (`pullBackFromRoads`), så att trottoaren syns.
+- **Ljus:** `Lighting.Technology = ShadowMap` sätts i `default.project.json` (byggskriptet stöder enum som `{"Enum": n}`). `ShadowSoftness`, miljöljus för de nya materialen, varm ton och svaga solstrålar sätts i `MapService`.
+- Cirka 23 000 extra delar på husen plus träd, lyktor och linjer. StreamingEnabled gör att mobilen bara laddar det närmaste.
+
 ## Språk
 - **All text i koden skrivs på engelska.** Svenska översättningar ligger i `src/shared/Localization/Swedish.luau`, med den engelska källtexten som nyckel. Saknas en översättning visas engelskan.
 - **`Locale`** (`src/shared/Localization/Locale.luau`) väljer svenska på klienten om `LocalizationService.RobloxLocaleId` börjar på `sv`. Alla andra språk får engelska.
@@ -239,6 +251,7 @@ build/      -> byggd placefil (committas)
 - [x] Fas 6: Stunts, budjobb, kull-jaktläge, krockläge
 - [x] Fas 7: Butik, game passes, developer products, daglig belöning
 - [x] Fas 8: Ljud, UI, minikarta, mobiloptimering
+- [ ] Fas 9: Snyggare stad: tak, fönster, trottoarer, träd, gatlyktor, vägmarkeringar, skuggor *(byggd, väntar på test)*
 
 ## Kända begränsningar / att göra
 - Lint i molnmiljön: `stylua --syntax luau --check` (syntax) och `selene src` (`selene.toml`, egen std `roblox_min.yml` där Roblox-globaler bara deklareras). Ingen typkontroll (luau-lsp saknas), så typfel syns först i Studios Output-fönster. Verktygen installeras med `cargo install stylua selene` om de saknas.
@@ -247,4 +260,5 @@ build/      -> byggd placefil (committas)
 - Inget motorljud förrän ett ljud-ID läggs in i `SoundConfig.EngineId`.
 - Alla game pass- och produkt-ID:n är inlagda i `ShopConfig`. Passen måste vara "Item for Sale" på roblox.com för att gå att köpa.
 - Krockdetekteringen kan ge falska WRECKED! vid hårda landningar i backar. Justera `Crash.WreckImpact` vid behov.
-- Gatorna saknar vägmarkeringar. Husen är enkla block utan tak och fönster (polering senare).
+- Vägmarkeringar finns bara längs huvudgatorna (rutterna). Mittlinjen följer ruttens linje, som kan ligga lite vid sidan av gatans mitt på breda gator.
+- Husen har inga dörrar eller enskilda fönster, bara fönsterband.

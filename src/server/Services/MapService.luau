@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local MapData = require(ReplicatedStorage.Shared.Map.MapData)
 local CityBuilder = require(script.Parent.Parent.Map.CityBuilder)
+local CityDetails = require(script.Parent.Parent.Map.CityDetails)
 local Geometry = require(script.Parent.Parent.Map.Geometry)
 local Landmarks = require(script.Parent.Parent.Map.Landmarks)
 local Props = require(script.Parent.Parent.Map.Props)
@@ -29,8 +30,9 @@ local function setupLighting()
 	Lighting.ClockTime = 15.5
 	Lighting.GeographicLatitude = 56.7 -- Halmstad
 	Lighting.Brightness = 2.6
-	Lighting.EnvironmentDiffuseScale = 0.6
-	Lighting.EnvironmentSpecularScale = 0.5
+	Lighting.EnvironmentDiffuseScale = 1 -- de nya materialen (tegeltak, puts) behöver miljöljuset
+	Lighting.EnvironmentSpecularScale = 0.8
+	Lighting.ShadowSoftness = 0.25 -- solskuggor kräver Technology = ShadowMap (sätts i default.project.json)
 	Lighting.OutdoorAmbient = Color3.fromRGB(130, 135, 145)
 	Lighting.Ambient = Color3.fromRGB(60, 62, 70)
 
@@ -45,6 +47,7 @@ local function setupLighting()
 
 	local correction = Instance.new("ColorCorrectionEffect")
 	correction.Saturation = 0.08
+	correction.TintColor = Color3.fromRGB(255, 249, 240) -- lite varmare eftermiddagsljus
 	correction.Contrast = 0.05
 	correction.Parent = Lighting
 
@@ -53,6 +56,11 @@ local function setupLighting()
 	bloom.Size = 20
 	bloom.Threshold = 1.8
 	bloom.Parent = Lighting
+
+	local sunRays = Instance.new("SunRaysEffect")
+	sunRays.Intensity = 0.04
+	sunRays.Spread = 0.6
+	sunRays.Parent = Lighting
 
 	local clouds = Instance.new("Clouds")
 	clouds.Cover = 0.55
@@ -180,12 +188,28 @@ function MapService.Init()
 	buildLandmarks(map, rng)
 	buildSigns(map)
 	buildRoadsideTrees(map, rng)
+	local lampCount = CityDetails.BuildStreets(map, CityBuilder.CodeAt)
+	local landmarks = MapData.Landmarks
+	local treeCount = CityDetails.BuildParkTrees(map, rng, CityBuilder.CodeAt, MapData.City, {
+		{ Center = landmarks.Church.Center, Radius = 70 },
+		{ Center = landmarks.Castle.Center, Radius = 90 },
+		{ Center = landmarks.Library.Center, Radius = 60 },
+		{ Center = landmarks.NorrePort.Position, Radius = 35 },
+		{ Center = landmarks.LookoutTower, Radius = 45 },
+		{ Center = landmarks.Hallandsgarden, Radius = 80 },
+	})
 	buildSpawn(map)
 	registerRespawnPoints()
 
 	VehicleService.SetSpawnProvider(MapData.PlayerSpawn)
 	print(
-		("[MapService] Halmstad byggt på %.1f s (terräng %.1f s, %d hus)"):format(os.clock() - started, terrainTime, buildingCount)
+		("[MapService] Halmstad byggt på %.1f s (terräng %.1f s, %d hus, %d gatlyktor, %d parkträd)"):format(
+			os.clock() - started,
+			terrainTime,
+			buildingCount,
+			lampCount,
+			treeCount
+		)
 	)
 end
 

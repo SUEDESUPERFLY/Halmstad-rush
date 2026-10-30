@@ -10,6 +10,13 @@
         "StreamingTargetRadius": 1024
       }
     },
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Technology": { "Enum": 3 },
+        "GlobalShadows": true
+      }
+    },
     "ReplicatedStorage": {
       "Shared": {
         "$path": "src/shared"
