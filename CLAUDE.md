@@ -9,7 +9,7 @@ Detta dokument är källan till sanning för regler och beslut. Uppdatera det ef
 - Användaren kör **inte** Rojo. Leverans sker som placefil:
   1. Kod skrivs i `src/` (Rojo-struktur, `default.project.json` hålls giltig ifall Rojo används senare).
   2. `python3 tools/build_place.py` bygger `build/HalmstadRush.rbxlx`.
-  3. Commit + push till `main`. Användaren hämtar med GitHub Desktop och öppnar filen i Studio.
+  3. Commit + push till `main`. Användaren laddar ner filen via GitHub i webbläsaren (Download raw file) och öppnar den i Studio. Inget GitHub Desktop.
 - Kör alltid byggskriptet och committa den byggda filen tillsammans med källkoden.
 - Användaren ändrar inte i placefilen i Studio. Allt innehåll (även kartan) genereras av kod eller ligger som `.rbxm` i `assets/`.
 
@@ -63,7 +63,7 @@ build/      -> byggd placefil (committas)
 ## Beslut
 | Beslut | Val |
 |---|---|
-| Leverans | Placefil (`build/HalmstadRush.rbxlx`) via GitHub, ingen Rojo hos användaren |
+| Leverans | Placefil (`build/HalmstadRush.rbxlx`) som laddas ner från GitHub på webben. Ingen Rojo och inget GitHub Desktop hos användaren |
 | Kartan | Block-out genereras av kod från en datamodul. Detaljer senare som `.rbxm` i `assets/` |
 | Spelarkrockar | Spöken mot varandra i fri roam. Krockar bara i race och jaktläge. NPC-bilar går alltid att krocka med |
 | Språk | Engelska som bas i UI, svensk översättning via Robloxs Localization. Platsnamn alltid på svenska |

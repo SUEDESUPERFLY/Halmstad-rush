@@ -2,21 +2,20 @@
 
 Arkadracing i öppen värld i ett stiliserat Halmstad. Byggt för Roblox, skrivet i Luau.
 
-## Så testar du (utan Rojo)
-
-**Första gången**
-1. Installera [GitHub Desktop](https://desktop.github.com) och logga in.
-2. *File → Clone repository* och välj `halmstad-rush`. Välj en mapp, t.ex. `Dokument\GitHub\halmstad-rush`.
+## Så testar du (bara webbläsare, inget extra program)
 
 **Varje gång en ny fas är klar**
-1. Klicka på *Fetch origin* och sedan *Pull origin* i GitHub Desktop.
-2. Öppna Roblox Studio → *File → Open from File…* → `build\HalmstadRush.rbxlx` i repomappen.
-3. Tryck **Play** (F5).
+1. Öppna https://github.com/SUEDESUPERFLY/halmstad-rush/blob/main/build/HalmstadRush.rbxlx i webbläsaren på datorn (logga in på GitHub).
+2. Klicka på nedladdningsikonen (**Download raw file**, pilen uppe till höger ovanför filinnehållet).
+3. Öppna Roblox Studio → *File → Open from File…* → välj den nedladdade `HalmstadRush.rbxlx`.
+4. Tryck **Play** (F5).
 
-> Spara inte ändringar i `HalmstadRush.rbxlx`. Den skrivs över vid nästa uppdatering.
-> Vill du experimentera i Studio: *File → Save As…* till en annan mapp.
+> Ta bort eller skriv över den gamla filen när du laddar ner en ny version, så att du inte öppnar en gammal.
+> Spara inte dina egna ändringar i filen. Vill du experimentera: *File → Save As…* med ett annat namn.
 
-**Testa mobil:** *Test*-fliken → *Device* → välj en telefon (t.ex. iPhone 14) innan du trycker Play.
+**Testa mobil i Studio:** *Test*-fliken → *Device* → välj en telefon (t.ex. iPhone 14) innan du trycker Play.
+
+**Testa på riktig telefon:** publicera spelet från Studio (*File → Publish to Roblox*) och starta det i Roblox-appen. Studio finns bara för Windows och Mac.
 
 ## För utvecklare
 - Källkoden ligger i `src/` (Rojo-struktur, `default.project.json`).
