@@ -11,6 +11,9 @@ Remotes.Names = {
 	ResetVehicle = "ResetVehicle", -- klient -> server, inga argument
 	TeleportToLocation = "TeleportToLocation", -- klient -> server, (locationId: string)
 	Notify = "Notify", -- server -> klient, (text: string, kind: string)
+	ReportWreck = "ReportWreck", -- klient -> server, inga argument (min bil är kvaddad, flytta mig)
+	Takedown = "Takedown", -- server -> klient, (npcChassis: BasePart) du gjorde en takedown
+	CrashEffect = "CrashEffect", -- server -> alla, (position: Vector3, strength: number) NPC-krock
 }
 
 local FOLDER_NAME = "Remotes"

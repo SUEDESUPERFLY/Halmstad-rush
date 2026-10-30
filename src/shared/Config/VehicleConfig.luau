@@ -81,6 +81,47 @@ VehicleConfig.Respawn = {
 	RoadPointSpacing = 50,
 }
 
+-- Krockar och takedowns (fas 3)
+VehicleConfig.Crash = {
+	LightImpact = 30, -- studs/s fartändring på en bildruta: gnistor och skak
+	WreckImpact = 70, -- hård smäll: bilen kvaddas
+	WreckMinSpeed = 55, -- man måste ha kört minst så här fort för att kvaddas
+	WreckDuration = 1.8, -- krockkamerans längd innan respawn
+	TakedownCamDuration = 1.1,
+	ChargeTakedown = 0.3, -- boost för en takedown
+	TeleportDistance = 25, -- större hopp än så på en bildruta = teleport, inte krock
+	IgnoreAfterTeleport = 1.5,
+	ReportWreckCooldown = 2, -- servern: minsta tid mellan två respawn efter kvaddning
+}
+
+-- NPC-bilar som kör runt på huvudgatorna (fas 3)
+VehicleConfig.Npc = {
+	CollisionGroup = "NPCCars",
+	PerRoute = { StoraRingen = 7, Vastra = 3 },
+	CruiseSpeed = 62,
+	Acceleration = 35,
+	Grip = 8,
+	TurnGain = 3,
+	MaxYawRate = 1.8,
+	YawResponse = 6,
+	WaypointRadius = 16,
+	ImpactThreshold = 22, -- fartändring som räknas som en smäll
+	WreckImpact = 38, -- smäll som kvaddar NPC-bilen
+	HitRadius = 22, -- spelarbil inom detta avstånd vid smällen = den som knuffade
+	TakedownWindow = 3, -- sekunder efter knuffen som en kvaddning räknas som takedown
+	WreckDuration = 4,
+	StuckTime = 5,
+	MinSpawnDistance = 120, -- respawna inte närmare spelare än så
+	Colors = {
+		Color3.fromRGB(235, 235, 235),
+		Color3.fromRGB(70, 70, 75),
+		Color3.fromRGB(150, 160, 170),
+		Color3.fromRGB(30, 60, 110),
+		Color3.fromRGB(120, 30, 30),
+		Color3.fromRGB(200, 190, 160),
+	},
+}
+
 -- Kollisionsgrupp för bilar och förare. Krockar inte med sig själv (spökläge i fri roam).
 VehicleConfig.CollisionGroup = "Cars"
 

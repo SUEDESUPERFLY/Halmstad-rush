@@ -262,7 +262,9 @@ function VehicleService.UprightCar(player: Player): boolean
 end
 
 function VehicleService.Init()
-	PhysicsService:RegisterCollisionGroup(CAR_GROUP)
+	if not PhysicsService:IsCollisionGroupRegistered(CAR_GROUP) then
+		PhysicsService:RegisterCollisionGroup(CAR_GROUP)
+	end
 	PhysicsService:CollisionGroupSetCollidable(CAR_GROUP, CAR_GROUP, false)
 end
 

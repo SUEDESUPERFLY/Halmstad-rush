@@ -1,5 +1,5 @@
 --!strict
--- Hastighetsmätare, boost-mätare och popup-texter (DRIFT!, NEAR MISS!, AIR).
+-- Hastighetsmätare, boost-mätare och popup-texter (DRIFT!, NEAR MISS!, AIR, TAKEDOWN!, WRECKED!).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -17,7 +17,11 @@ local POPUP_COLORS: { [string]: Color3 } = {
 	respawn = Color3.fromRGB(120, 190, 255),
 	location = Color3.fromRGB(255, 255, 255),
 	info = Color3.fromRGB(220, 220, 220),
+	takedown = Color3.fromRGB(255, 70, 60),
+	wreck = Color3.fromRGB(255, 150, 40),
 }
+
+local BIG_POPUPS: { [string]: boolean } = { takedown = true, wreck = true }
 
 local gui: ScreenGui
 local speedLabel: TextLabel
@@ -92,9 +96,10 @@ end
 local function showPopup(text: string, kind: string)
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromOffset(400, 36)
+	local big = BIG_POPUPS[kind] == true
+	label.Size = UDim2.fromOffset(400, if big then 56 else 36)
 	label.Font = Enum.Font.GothamBlack
-	label.TextSize = 30
+	label.TextSize = if big then 48 else 30
 	label.Text = text
 	label.TextColor3 = POPUP_COLORS[kind] or Color3.new(1, 1, 1)
 	label.TextStrokeTransparency = 0.3

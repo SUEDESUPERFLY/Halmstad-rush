@@ -357,6 +357,93 @@ def road_points(grid: np.ndarray) -> list[tuple[int, int, int]]:
     return points
 
 
+# NPC-rutter längs huvudgatorna. Ankare i rutnätsceller (kolumn, rad), snäpps till närmaste
+# gula huvudgata. Rutten mellan ankarna hittas med A* på gatunätet. Körriktning = listans ordning.
+ROUTES = {
+    # Slottsgatan över Nissan -> Viktoriagatan -> Wrangelsgatan norrut -> Järnvägsleden -> Timmermansleden
+    "StoraRingen": [(505, 382), (640, 378), (720, 420), (880, 540), (1050, 680), (1010, 420), (990, 250), (830, 140), (600, 20), (545, 165), (358, 330), (430, 375)],
+    # Järnvägsleden söderut -> Slottsjordsvägen -> tillbaka mot Slottsgatan
+    "Vastra": [(358, 330), (240, 495), (310, 490), (420, 450), (500, 400)],
+}
+LANE_OFFSET = 4.0  # studs till höger om gatans mitt (högertrafik)
+ROUTE_STEP = 5  # celler mellan vägpunkter (20 studs)
+
+
+def snap_anchor(grid: np.ndarray, cx: int, cz: int) -> tuple[int, int]:
+    yellow = grid == CODES.index("Y")
+    road = yellow | (grid == CODES.index("A"))
+    for mask, radius in ((yellow, 18), (road, 30)):
+        z0, z1 = max(0, cz - radius), min(grid.shape[0], cz + radius + 1)
+        x0, x1 = max(0, cx - radius), min(grid.shape[1], cx + radius + 1)
+        ys, xs = np.nonzero(mask[z0:z1, x0:x1])
+        if len(xs):
+            d = (xs + x0 - cx) ** 2 + (ys + z0 - cz) ** 2
+            i = d.argmin()
+            return int(xs[i] + x0), int(ys[i] + z0)
+    raise SystemExit(f"Inget gatuläge nära ankaret {(cx, cz)}")
+
+
+def astar(cost: np.ndarray, start: tuple[int, int], goal: tuple[int, int]) -> list[tuple[int, int]]:
+    import heapq
+
+    h, w = cost.shape
+    sx, sz = start
+    gx, gz = goal
+    best = {start: 0.0}
+    came: dict[tuple[int, int], tuple[int, int]] = {}
+    heap = [(0.0, 0.0, start)]
+    steps = [(dx, dz, math.hypot(dx, dz)) for dx in (-1, 0, 1) for dz in (-1, 0, 1) if dx or dz]
+    while heap:
+        _, g, node = heapq.heappop(heap)
+        if node == goal:
+            path = [node]
+            while node in came:
+                node = came[node]
+                path.append(node)
+            return path[::-1]
+        if g > best.get(node, math.inf):
+            continue
+        x, z = node
+        for dx, dz, length in steps:
+            nx, nz = x + dx, z + dz
+            if 0 <= nx < w and 0 <= nz < h and cost[nz, nx] < math.inf:
+                ng = g + length * cost[nz, nx]
+                if ng < best.get((nx, nz), math.inf):
+                    best[(nx, nz)] = ng
+                    came[(nx, nz)] = node
+                    heapq.heappush(heap, (ng + math.hypot(gx - nx, gz - nz) * 0.6, ng, (nx, nz)))
+    raise SystemExit(f"Ingen väg mellan {start} och {goal}")
+
+
+def build_routes(grid: np.ndarray) -> dict[str, list[tuple[float, float]]]:
+    code = CODES.index
+    road = (grid == code("A")) | (grid == code("Y")) | (grid == code("D"))
+    depth = ndimage.distance_transform_edt(road)
+    cost = np.full(grid.shape, math.inf)
+    cost[road] = 1 + 3 / np.maximum(depth[road], 1)  # håll dig mitt på gatan
+    cost[grid == code("Y")] *= 0.6  # föredra huvudgator
+    routes = {}
+    for name, anchors in ROUTES.items():
+        snapped = [snap_anchor(grid, cx, cz) for cx, cz in anchors]
+        cells: list[tuple[int, int]] = []
+        for i in range(len(snapped)):
+            leg = astar(cost, snapped[i], snapped[(i + 1) % len(snapped)])
+            cells.extend(leg[:-1])
+        sampled = cells[::ROUTE_STEP]
+        world = np.array([cell_to_world(cx, cz) for cx, cz in sampled])
+        # Utjämning (cirkulär) så att kurvorna blir mjuka
+        smooth = (np.roll(world, 1, axis=0) + world * 2 + np.roll(world, -1, axis=0)) / 4
+        ahead = np.roll(smooth, -1, axis=0) - np.roll(smooth, 1, axis=0)
+        norms = np.linalg.norm(ahead, axis=1, keepdims=True)
+        direction = ahead / np.maximum(norms, 1e-6)
+        right = np.stack([-direction[:, 1], direction[:, 0]], axis=1)
+        lane = smooth + right * LANE_OFFSET
+        routes[name] = [(float(x), float(z)) for x, z in lane]
+        length = np.linalg.norm(np.roll(lane, -1, axis=0) - lane, axis=1).sum()
+        print(f"Rutt {name}: {len(lane)} punkter, {length:.0f} studs")
+    return routes
+
+
 def rle_rows(grid: np.ndarray) -> list[str]:
     rows = []
     for row in grid:
@@ -380,7 +467,7 @@ def write_lua(name: str, body: str) -> None:
     (OUT_DIR / f"{name}.luau").write_text(header + body, encoding="utf-8")
 
 
-def save_preview(grid: np.ndarray, buildings, points, path: str) -> None:
+def save_preview(grid: np.ndarray, buildings, points, path: str, routes=None) -> None:
     colors = {
         "A": (90, 90, 95),
         "Y": (60, 60, 60),
@@ -413,6 +500,10 @@ def save_preview(grid: np.ndarray, buildings, points, path: str) -> None:
         cx = (x - ox) / CELL_STUDS
         cz = (z - oz) / CELL_STUDS
         d.point((cx, cz), fill=(255, 255, 0))
+    for i, route in enumerate((routes or {}).values()):
+        color = [(255, 0, 255), (0, 255, 255)][i % 2]
+        coords = [((x - ox) / CELL_STUDS, (z - oz) / CELL_STUDS) for x, z in route]
+        d.line(coords + coords[:1], fill=color, width=3)
     im.save(path)
 
 
@@ -455,12 +546,19 @@ def main() -> None:
     pts = ";".join(f"{x},{z},{yaw}" for x, z, yaw in points)
     write_lua("CityRoadPoints", f'return "{pts}"\n')
 
+    routes = build_routes(grid)
+    route_body = "return {\n"
+    for name, route in routes.items():
+        route_body += f'\t{name} = "' + ";".join(f"{x:.0f},{z:.0f}" for x, z in route) + '",\n'
+    route_body += "}\n"
+    write_lua("CityRoutes", route_body)
+
     counts = {CODES[i]: int((grid == i).sum()) for i in range(len(CODES))}
     print(f"Rutnät {w}x{h} celler ({w * CELL_STUDS}x{h * CELL_STUDS} studs), origo {ox},{oz}")
     print("Celler per klass:", counts)
     print(f"Byggnader: {len(buildings)}  Respawnpunkter: {len(points)}  RLE-längd: {sum(len(r) for r in rows)}")
     if args.preview:
-        save_preview(grid, buildings, points, args.preview)
+        save_preview(grid, buildings, points, args.preview, routes)
 
 
 if __name__ == "__main__":

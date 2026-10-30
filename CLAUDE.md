@@ -77,6 +77,18 @@ build/      -> byggd placefil (committas)
 - Snabbresa: klienten skickar bara ett plats-id. Servern kontrollerar typ, längd, att platsen finns och en cooldown på 5 s.
 - Alla serverflyttar går via `VehicleService.MoveCar` / `UprightCar`, som tar över nätverksägarskapet en kort stund och pausar teleportkontrollen.
 
+## Krockar, takedowns och NPC-bilar (fas 3)
+- **Delad fjädring:** `src/shared/Vehicle/Suspension.luau` används av spelarbilar (klienten) och NPC-bilar (servern).
+- **Krockdetektering (klient, egen bil):** hastigheten vi satte förra bildrutan jämförs med vad fysiken gjort av den (bara horisontellt). `Crash.LightImpact` ger gnistor och skak. `Crash.WreckImpact` vid minst `WreckMinSpeed`, där bilen tappat fart, ger WRECKED!: ingen styrning, fjädringen släpps, krockkamera i `WreckDuration`, och sedan `ReportWreck`, så att servern kör `RespawnOnRoad`. Teleporter, respawn och återställning pausar detekteringen (`IgnoreCrashes`).
+- **NPC-bilar (`NpcService`, servern äger fysiken):** de följer rutter (`Generated/CityRoutes.luau`, A* på gatunätet längs huvudgatorna, högertrafik) och saktar ner i kurvor. Smällar mäts likadant som för spelarbilar. Respawn sker långt från spelare vid kvaddning (efter `WreckDuration`), om de fastnar, hamnar i vattnet eller utanför kartan. Kollisionsgruppen `NPCCars` krockar med spelarbilar och med varandra.
+- **Takedowns avgörs bara på servern:** en NPC-smäll med en spelarbil inom `HitRadius` sparar spelaren som "senaste knuffare". Kvaddas NPC-bilen inom `TakedownWindow` räknas det som en takedown: `CrashService.AwardTakedown` ökar `leaderstats.Takedowns` och skickar `Takedown` till spelaren, som får popup, boost och en kort krockkamera med låst styrning. Klienten kan aldrig rapportera en takedown.
+- **Effekter (`EffectsController`, bara lokalt):**
+  - Gnistor och rök använder Robloxs inbyggda texturer (`rbxasset://`).
+  - Plåtdelarna ligger i kollisionsgruppen `Debris` och krockar inte med bilar. Motverkad gravitation gör att de svävar sakta.
+  - Oskärpa och avmättade färger ger slow motion-känsla. Fysiken saktas aldrig ner.
+- `CrashEffect` skickas till alla när en NPC kvaddas, och visas för spelare inom 600 studs.
+- NPC-bilarna har attributet `Obstacle` och ger nära-ögat-boost.
+
 ## Kontroller
 | | Tangentbord | Handkontroll | Touch |
 |---|---|---|---|
@@ -102,8 +114,8 @@ build/      -> byggd placefil (committas)
 ## Faser
 - [x] Fas 0: plan och frågor
 - [x] Fas 1: Struktur + körbar bil med arkadfysik, drift och boost på en testplatta. Touch-kontroller.
-- [ ] Fas 2: Block-out av Halmstad (Centrum/Stora torg/Storgatan, Nissan med broar, slottet, Tylösand, Östra stranden, Galgberget, hamn/industri, landsväg) + respawn-system *(byggd, väntar på test)*
-- [ ] Fas 3: Krockar, takedowns, krockkamera, enkla NPC-bilar
+- [x] Fas 2: Halmstad från riktiga stadskartan + respawn-system
+- [ ] Fas 3: Krockar, takedowns, krockkamera, enkla NPC-bilar *(byggd, väntar på test)*
 - [ ] Fas 4: Första racet + poäng/pengar (i minnet)
 - [ ] Fas 5: DataStore (retry, sessionslås, versionerat schema), garage, bilköp, uppgraderingar, lackering
 - [ ] Fas 6: Stunts, budjobb, kull-jaktläge, krockläge
@@ -114,4 +126,5 @@ build/      -> byggd placefil (committas)
 - Ingen Luau-linter körs i molnmiljön. Fel syns först i Studios Output-fönster.
 - Andra spelare ser inte hjulens fjädring och rotation (fixas vid behov i fas 8).
 - Kartan har inte StreamingEnabled-optimering ännu (fas 8). Cirka 5 600 hus som Parts plus Terrain.
+- Krockdetekteringen kan ge falska WRECKED! vid hårda landningar i backar. Justera `Crash.WreckImpact` vid behov.
 - Gatorna saknar vägmarkeringar. Husen är enkla block utan tak och fönster (polering senare).

@@ -13,9 +13,11 @@ local RunService = game:GetService("RunService")
 local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Signal = require(ReplicatedStorage.Shared.Util.Signal)
+local Suspension = require(ReplicatedStorage.Shared.Vehicle.Suspension)
 local InputController = require(script.Parent.InputController)
 
 local T = VehicleConfig.Tuning
+local C = VehicleConfig.Crash
 local player = Players.LocalPlayer
 
 type Wheel = {
@@ -33,6 +35,7 @@ export type DriveState = {
 	Boosting: boolean,
 	Drifting: boolean,
 	Airborne: boolean,
+	Wrecked: boolean,
 }
 
 local VehicleController = {}
@@ -40,6 +43,8 @@ local VehicleController = {}
 VehicleController.Entered = Signal.new() -- (car: Model)
 VehicleController.Exited = Signal.new()
 VehicleController.Popup = Signal.new() -- (text: string, kind: string)
+VehicleController.Crashed = Signal.new() -- (strength: number, point: Vector3) lätt eller hård smäll
+VehicleController.Wrecked = Signal.new() -- (car: Model, point: Vector3) bilen är kvaddad
 
 local car: Model? = nil
 local chassis: BasePart? = nil
@@ -56,6 +61,7 @@ local state: DriveState = {
 	Boosting = false,
 	Drifting = false,
 	Airborne = false,
+	Wrecked = false,
 }
 
 local steerSmoothed = 0
@@ -65,6 +71,15 @@ local flippedTime = 0
 local nearMissCooldown: { [Instance]: number } = {}
 local lastResetRequest = 0
 local resetRemote: RemoteEvent
+local wreckRemote: RemoteEvent
+
+-- Krockdetektering: hastigheten vi själva satte förra bildrutan jämförs med vad fysiken
+-- gjort av den. En plötslig förändring i sidled/framåt = vi har kört in i något.
+local lastSetVelocity: Vector3? = nil
+local lastPosition: Vector3? = nil
+local ignoreCrashUntil = 0
+local inputLockUntil = 0
+local lockedThrottle = 0
 
 local function moveToward(value: number, target: number, maxDelta: number): number
 	if value < target then
@@ -85,12 +100,35 @@ function VehicleController.GetCar(): Model?
 	return car
 end
 
+-- Krockar räknas inte en stund (efter teleport, respawn eller återställning).
+function VehicleController.IgnoreCrashes(seconds: number)
+	ignoreCrashUntil = math.max(ignoreCrashUntil, os.clock() + seconds)
+	lastSetVelocity = nil
+end
+
+-- Låser styrningen (rakt fram, samma gas) medan takedown-kameran visas.
+function VehicleController.LockInput(seconds: number)
+	inputLockUntil = os.clock() + seconds
+	lockedThrottle = InputController.GetDriveInput().Throttle
+end
+
+function VehicleController.AddBoost(amount: number)
+	state.Boost = math.clamp(state.Boost + amount, 0, 1)
+end
+
+-- Avslutar kvaddat läge (anropas när servern har flyttat tillbaka bilen till gatan).
+function VehicleController.EndWreck()
+	state.Wrecked = false
+	VehicleController.IgnoreCrashes(C.IgnoreAfterTeleport)
+end
+
 function VehicleController.RequestReset()
 	local now = os.clock()
 	if not car or now - lastResetRequest < VehicleConfig.Server.ResetCooldown then
 		return
 	end
 	lastResetRequest = now
+	VehicleController.IgnoreCrashes(C.IgnoreAfterTeleport)
 	resetRemote:FireServer()
 end
 
@@ -160,6 +198,8 @@ local function enterCar(model: Model)
 	currentGrip = T.Grip
 	airTime = 0
 	flippedTime = 0
+	state.Wrecked = false
+	VehicleController.IgnoreCrashes(C.IgnoreAfterTeleport)
 
 	setPlayerControlsEnabled(false)
 	VehicleController.Entered:Fire(model)
@@ -203,33 +243,50 @@ local function checkNearMiss(cf: CFrame, speed: number)
 	end
 end
 
-local function updateSuspension(cf: CFrame, mass: number): (number, Vector3)
-	local root = chassis :: BasePart
-	local up = cf.UpVector
-	local rayLength = T.SuspensionRestLength + T.WheelRadius
-	local maxForce = mass * workspace.Gravity * 4
-	local grounded = 0
-	local normalSum = Vector3.zero
-
-	for _, wheel in wheels do
-		local mountPos = wheel.Mount.WorldPosition
-		local result = workspace:Raycast(mountPos, -up * rayLength, rayParams)
-		if result then
-			grounded += 1
-			normalSum += result.Normal
-			local springLength = math.max(result.Distance - T.WheelRadius, 0)
-			local compression = T.SuspensionRestLength - springLength
-			local pointVelocity = root:GetVelocityAtPosition(mountPos):Dot(up)
-			local force = (mass / 4) * (T.SpringStrength * compression - T.SpringDamping * pointVelocity)
-			wheel.Force.Force = up * math.clamp(force, 0, maxForce)
-			wheel.SpringLength = springLength
-		else
-			wheel.Force.Force = Vector3.zero
-			wheel.SpringLength = T.SuspensionRestLength
-		end
+local function wreck(point: Vector3)
+	if state.Wrecked or not car then
+		return
 	end
+	state.Wrecked = true
+	state.Boosting = false
+	state.Drifting = false
+	VehicleController.Wrecked:Fire(car, point)
+	task.delay(C.WreckDuration, function()
+		if state.Wrecked then
+			wreckRemote:FireServer()
+			-- Om servern av någon anledning inte flyttar oss: släpp läget ändå.
+			task.delay(1.5, function()
+				if state.Wrecked then
+					VehicleController.EndWreck()
+				end
+			end)
+		end
+	end)
+end
 
-	return grounded, normalSum
+local function detectCrash(position: Vector3, velocity: Vector3, now: number)
+	local previous = lastSetVelocity
+	local previousPosition = lastPosition
+	lastPosition = position
+	if not previous or not previousPosition or now < ignoreCrashUntil or state.Wrecked then
+		return
+	end
+	if (position - previousPosition).Magnitude > C.TeleportDistance then
+		VehicleController.IgnoreCrashes(C.IgnoreAfterTeleport)
+		return
+	end
+	local before = previous * Vector3.new(1, 0, 1)
+	local after = velocity * Vector3.new(1, 0, 1)
+	local change = (after - before).Magnitude
+	if change < C.LightImpact then
+		return
+	end
+	local point = position + (if before.Magnitude > 1 then before.Unit else Vector3.zero) * 5
+	VehicleController.Crashed:Fire(change, point)
+	local slowedDown = before.Magnitude - after.Magnitude > change * 0.5
+	if change >= C.WreckImpact and before.Magnitude >= C.WreckMinSpeed and slowedDown then
+		wreck(point)
+	end
 end
 
 local function updateWheelVisuals(dt: number, forwardSpeed: number)
@@ -252,13 +309,25 @@ local function step(dt: number)
 	end
 	dt = math.min(dt, 1 / 30)
 
+	local now = os.clock()
 	local input = InputController.GetDriveInput()
+	if now < inputLockUntil then
+		input = { Throttle = lockedThrottle, Brake = 0, Steer = 0, Handbrake = false, Boost = false }
+	end
 	local cf = root.CFrame
-	local mass = root.AssemblyMass
 	local velocity = root.AssemblyLinearVelocity
 	local angular = root.AssemblyAngularVelocity
 
-	local grounded, normalSum = updateSuspension(cf, mass)
+	detectCrash(cf.Position, velocity, now)
+	if state.Wrecked then
+		-- Kvaddad: ingen styrning eller fjädring, bilen får tumla fritt tills respawn.
+		Suspension.Release(wheels)
+		lastSetVelocity = nil
+		state.Speed = velocity:Dot(cf.LookVector)
+		return
+	end
+
+	local grounded, normalSum = Suspension.Update(root, wheels, rayParams)
 	steerSmoothed = moveToward(steerSmoothed, input.Steer, T.SteerSpeed * dt)
 
 	local wantsBoost = input.Boost and state.Boost > 0
@@ -374,6 +443,7 @@ local function step(dt: number)
 
 	root.AssemblyLinearVelocity = velocity
 	root.AssemblyAngularVelocity = angular
+	lastSetVelocity = velocity
 
 	checkNearMiss(cf, math.abs(state.Speed))
 	updateWheelVisuals(dt, state.Speed)
@@ -398,6 +468,7 @@ end
 
 function VehicleController.Start()
 	resetRemote = Remotes.Get("ResetVehicle")
+	wreckRemote = Remotes.Get("ReportWreck")
 	InputController.ResetPressed:Connect(VehicleController.RequestReset)
 	RunService.PreSimulation:Connect(step)
 end

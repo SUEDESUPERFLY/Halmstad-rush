@@ -9,6 +9,8 @@ local modules = {
 	Controllers:WaitForChild("InputController"),
 	Controllers:WaitForChild("VehicleController"),
 	Controllers:WaitForChild("CameraController"),
+	Controllers:WaitForChild("EffectsController"),
+	Controllers:WaitForChild("CrashController"),
 	UI:WaitForChild("HUD"),
 	UI:WaitForChild("TouchControls"),
 	UI:WaitForChild("DistrictBanner"),
