@@ -62,6 +62,7 @@ MapData.TylosandCoastZ = 1150 -- kusten väster om stadskartan
 MapData.Bounds = {
 	{ Min = v(-4800, -1700), Max = v(2800, 2700) }, -- Halmstad med omnejd
 	{ Min = v(5200, -800), Max = v(6800, 800) }, -- testbanan
+	{ Min = v(5300, -2900), Max = v(6700, -1500) }, -- krocklägets korsning (fas 6)
 }
 
 MapData.TestTrackOrigin = Vector3.new(6000, 0, 0)
@@ -69,7 +70,7 @@ MapData.TestTrackOrigin = Vector3.new(6000, 0, 0)
 MapData.Hills = {
 	-- Galgberget med utsiktstornet. Gator och hus i backen följer terrängen.
 	{ Name = "Galgberget", Center = v(-394, -1158), FlatRadius = 50, Radius = 430, Height = 36, Material = Enum.Material.Grass },
-	{ Name = "Dyn 1", Center = v(-4300, 1112), FlatRadius = 0, Radius = 26, Height = 5, Material = Enum.Material.Sand },
+	{ Name = "Dyn 1", Center = v(-4500, 1120), FlatRadius = 0, Radius = 26, Height = 5, Material = Enum.Material.Sand },
 	{ Name = "Dyn 2", Center = v(-3500, 1115), FlatRadius = 0, Radius = 26, Height = 5, Material = Enum.Material.Sand },
 } :: { Hill }
 
@@ -104,19 +105,19 @@ MapData.Beaches = {
 		Name = "Tylösand",
 		Min = v(-4560, 1085),
 		Max = v(-3300, 1145),
-		Lifeguards = { -4350, -3700 },
+		Lifeguards = { -4520, -3700 },
 		Volleyball = v(-3600, 1100),
-		Surfboards = v(-4200, 1090),
-		Keep = { -4000 },
+		Surfboards = v(-3900, 1090),
+		Keep = { -4000, -4420, -4370, -4320, -4270, -4220, -4170, -4120 }, -- brygga och hoppbana
 	},
 	{
 		Name = "Östra stranden",
 		Min = v(-60, 1800),
 		Max = v(2240, 1840),
 		Lifeguards = { 400, 1300, 2000 },
-		Volleyball = v(900, 1815),
+		Volleyball = v(1500, 1815),
 		Surfboards = v(150, 1803),
-		Keep = { -100 },
+		Keep = { -100, 740, 790, 840, 890, 940, 990, 1040 }, -- piren och hoppbanan
 	},
 }
 
@@ -158,6 +159,7 @@ MapData.Districts = {
 MapData.SpecialAreas = {
 	{ Name = "Stora torg", Min = v(-90, -50), Max = v(85, 50) },
 	{ Name = "Testbanan", Min = v(5200, -800), Max = v(6800, 800) },
+	{ Name = "Krockläget", Min = v(5300, -2900), Max = v(6700, -1500) },
 	{ Name = "Tylösand", Min = v(-4800, 900), Max = v(-3300, 2700) },
 	{ Name = "Tylösandsvägen", Min = v(-4800, -1700), Max = v(-2272, 2700) },
 	{ Name = "Östra stranden", Min = v(-60, 1780), Max = v(2800, 2700) },

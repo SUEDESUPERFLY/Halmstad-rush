@@ -22,7 +22,9 @@ local VehicleService = require(script.Parent.VehicleService)
 local N = VehicleConfig.Npc
 
 export type Npc = {
-	Kind: string, -- "Traffic" | "Racer"
+	Kind: string, -- "Traffic" | "Racer" | "Arena" | "Chaser"
+	Target: (() -> Vector3?)?, -- om satt: kör mot den här punkten i stället för att följa rutten
+	RespawnAt: (() -> CFrame?)?, -- om satt: var bilen ska dyka upp igen
 	Speed: number, -- marschfart
 	SpeedScale: number, -- justeras av RaceService (rubber band)
 	Passed: number, -- antal passerade ruttpunkter (racets framsteg)
@@ -44,6 +46,7 @@ export type Npc = {
 local NpcService = {}
 
 local npcs: { Npc } = {}
+local eventListeners: { (npc: Npc, event: string, strength: number) -> () } = {}
 local routes: { [string]: { Vector2 } } = {}
 local crashEffectRemote: RemoteEvent
 local folder: Folder
@@ -146,7 +149,24 @@ local function placeNpc(npc: Npc, index: number)
 	npc.LastHitter = nil
 end
 
+local function fireEvent(npc: Npc, event: string, strength: number)
+	for _, listener in eventListeners do
+		task.spawn(listener, npc, event, strength)
+	end
+end
+
 local function respawnNpc(npc: Npc)
+	local custom = npc.RespawnAt and npc.RespawnAt()
+	if custom then
+		npc.Model:PivotTo(custom)
+		npc.Chassis.AssemblyLinearVelocity = Vector3.zero
+		npc.Chassis.AssemblyAngularVelocity = Vector3.zero
+		npc.Mode = "Drive"
+		npc.StuckTime = 0
+		npc.LastSetVelocity = nil
+		npc.LastHitter = nil
+		return
+	end
 	if npc.Kind == "Racer" then
 		-- Tävlingsbilar kommer tillbaka strax bakom där de kvaddades
 		local back = 3
@@ -224,6 +244,7 @@ local function wreckNpc(npc: Npc, strength: number, now: number)
 	root:ApplyImpulse(Vector3.new(0, mass * 45, 0))
 	root:ApplyAngularImpulse(Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * mass * 60)
 	crashEffectRemote:FireAllClients(root.Position, strength)
+	fireEvent(npc, "Wrecked", strength)
 
 	local hitter = npc.LastHitter
 	if hitter and now - npc.LastHitTime <= N.TakedownWindow then
@@ -260,6 +281,7 @@ local function updateNpc(npc: Npc, dt: number, now: number)
 				npc.LastHitter = hitter
 				npc.LastHitTime = now
 			end
+			fireEvent(npc, "Impact", change)
 			if change > N.WreckImpact then
 				wreckNpc(npc, change, now)
 				return
@@ -277,24 +299,47 @@ local function updateNpc(npc: Npc, dt: number, now: number)
 		return
 	end
 
-	-- Följ rutten
-	local route = npc.Route
 	local flat = Vector2.new(position.X, position.Z)
-	local target = route[npc.Index]
-	local guard = 0
-	while (target - flat).Magnitude < N.WaypointRadius and guard < 5 do
-		npc.Index = npc.Index % #route + 1
-		npc.Passed += 1
-		target = route[npc.Index]
-		guard += 1
+	local toTarget3: Vector3
+	local targetSpeed: number
+	local chasePoint = npc.Target and npc.Target()
+	if chasePoint then
+		-- Kör mot en punkt (kull). Enkel hinderundvikning med tre strålar framåt.
+		local direction = (chasePoint - position) * Vector3.new(1, 0, 1)
+		toTarget3 = if direction.Magnitude > 1 then direction.Unit else cf.LookVector * Vector3.new(1, 0, 1)
+		local look = (cf.LookVector * Vector3.new(1, 0, 1)).Unit
+		local origin = position + Vector3.new(0, 1, 0)
+		local reach = N.AvoidDistance
+		if workspace:Raycast(origin, look * reach, npc.RayParams) then
+			local left = CFrame.Angles(0, math.rad(40), 0):VectorToWorldSpace(look)
+			local rightDir = CFrame.Angles(0, math.rad(-40), 0):VectorToWorldSpace(look)
+			local leftHit = workspace:Raycast(origin, left * reach, npc.RayParams)
+			local rightHit = workspace:Raycast(origin, rightDir * reach, npc.RayParams)
+			local leftFree = if leftHit then leftHit.Distance else reach
+			local rightFree = if rightHit then rightHit.Distance else reach
+			local turnDeg = if leftFree >= rightFree then 70 else -70
+			toTarget3 = CFrame.Angles(0, math.rad(turnDeg), 0):VectorToWorldSpace(look)
+		end
+		targetSpeed = npc.Speed * npc.SpeedScale
+	else
+		-- Följ rutten
+		local route = npc.Route
+		local target = route[npc.Index]
+		local guard = 0
+		while (target - flat).Magnitude < N.WaypointRadius and guard < 5 do
+			npc.Index = npc.Index % #route + 1
+			npc.Passed += 1
+			target = route[npc.Index]
+			guard += 1
+		end
+		local after = route[npc.Index % #route + 1]
+		local toTarget = target - flat
+		toTarget3 = Vector3.new(toTarget.X, 0, toTarget.Y).Unit
+		local segment = (after - target)
+		local segment3 = Vector3.new(segment.X, 0, segment.Y).Unit
+		local turn = math.acos(math.clamp(toTarget3:Dot(segment3), -1, 1))
+		targetSpeed = npc.Speed * npc.SpeedScale * (1 - math.min(turn / (math.pi / 2), 0.6))
 	end
-	local after = route[npc.Index % #route + 1]
-	local toTarget = target - flat
-	local toTarget3 = Vector3.new(toTarget.X, 0, toTarget.Y).Unit
-	local segment = (after - target)
-	local segment3 = Vector3.new(segment.X, 0, segment.Y).Unit
-	local turn = math.acos(math.clamp(toTarget3:Dot(segment3), -1, 1))
-	local targetSpeed = npc.Speed * npc.SpeedScale * (1 - math.min(turn / (math.pi / 2), 0.6))
 
 	local normal = (normalSum / grounded).Unit
 	local forward = cf.LookVector - normal * cf.LookVector:Dot(normal)
@@ -338,12 +383,22 @@ function NpcService.SpawnRacer(routeName: string, index: number, color: Color3, 
 	if not route then
 		return nil
 	end
+	return NpcService.SpawnOnRoute(route, index, color, speed, "Racer", wreckDuration)
+end
+
+-- NPC-bil på en valfri rutt (t.ex. korsningstrafiken i krockläget).
+function NpcService.SpawnOnRoute(route: { Vector2 }, index: number, color: Color3, speed: number, kind: string, wreckDuration: number): Npc
 	local npc = spawnNpc(route, index, color, Random.new())
-	npc.Kind = "Racer"
+	npc.Kind = kind
 	npc.Speed = speed
 	npc.WreckDuration = wreckDuration
-	npc.Model.Name = "RacerCar"
+	npc.Model.Name = kind .. "Car"
 	return npc
+end
+
+-- Lyssnar på smällar ("Impact") och kvaddningar ("Wrecked") för alla NPC-bilar.
+function NpcService.OnEvent(listener: (npc: Npc, event: string, strength: number) -> ())
+	table.insert(eventListeners, listener)
 end
 
 function NpcService.Remove(npc: Npc)

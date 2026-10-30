@@ -23,6 +23,11 @@ Remotes.Names = {
 	RaceFinished = "RaceFinished", -- server -> klient, (results: table)
 	GarageAction = "GarageAction", -- klient -> server, (action: "Buy"|"Select"|"Upgrade"|"Paint", carId: string, arg: string?)
 	ProfileUpdated = "ProfileUpdated", -- server -> klient, (profile: table) pengar, bilar, uppgraderingar
+	ActivityInvite = "ActivityInvite", -- server -> klient, (id, name, description) du står vid en aktivitet
+	RequestActivity = "RequestActivity", -- klient -> server, (id: string)
+	LeaveActivity = "LeaveActivity", -- klient -> server, inga argument
+	ActivityState = "ActivityState", -- server -> klient, (state: table) titel, mål, tid, poäng (bara visning)
+	ActivityResult = "ActivityResult", -- server -> klient, (result: table) slutresultat och belöning
 }
 
 local FOLDER_NAME = "Remotes"

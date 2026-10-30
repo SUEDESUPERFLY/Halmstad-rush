@@ -112,6 +112,7 @@ VehicleConfig.Npc = {
 	WreckDuration = 4,
 	StuckTime = 5,
 	MinSpawnDistance = 120, -- respawna inte närmare spelare än så
+	AvoidDistance = 28, -- jagande NPC-bilar (kull) styr undan hinder inom så här långt
 	Colors = {
 		Color3.fromRGB(235, 235, 235),
 		Color3.fromRGB(70, 70, 75),

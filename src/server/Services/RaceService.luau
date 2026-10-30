@@ -22,6 +22,7 @@ local EconomyService = require(script.Parent.EconomyService)
 local NpcService = require(script.Parent.NpcService)
 local RespawnService = require(script.Parent.RespawnService)
 local VehicleService = require(script.Parent.VehicleService)
+local PlayerMode = require(script.Parent.Parent.Util.PlayerMode)
 
 type Checkpoint = {
 	Position: Vector3,
@@ -171,6 +172,7 @@ end
 
 local function restorePlayer(player: Player)
 	VehicleService.SetCollisionGroup(player, nil)
+	PlayerMode.Clear(player, "Race")
 end
 
 local function cleanup(session: Session)
@@ -410,7 +412,7 @@ local function updateSession(session: Session)
 			local root = car.PrimaryPart
 			if root and (root.Position - session.StartPosition).Magnitude < RaceConfig.StartRadius then
 				local inSession = findParticipant(player)
-				if not inSession and os.clock() - (lastInvite[player] or 0) > 1 then
+				if not inSession and PlayerMode.IsFree(player) and os.clock() - (lastInvite[player] or 0) > 1 then
 					lastInvite[player] = os.clock()
 					remotes.RaceInvite:FireClient(player, session.Race.Id, session.Race.Name, state == "Lobby")
 				end
@@ -438,6 +440,9 @@ local function onJoinRequested(player: Player, raceId: unknown)
 		return
 	end
 	if playerCount(session) >= RaceConfig.MaxParticipants then
+		return
+	end
+	if not PlayerMode.Set(player, "Race") then
 		return
 	end
 	if session.State == "Idle" then
@@ -570,7 +575,7 @@ function RaceService.Init()
 	CrashService.OnTakedown(onTakedown)
 
 	-- Kvaddad eller i vattnet under racet: tillbaka till senaste kontrollpunkten
-	RespawnService.SetRespawnOverride(function(player: Player): CFrame?
+	RespawnService.AddRespawnOverride(function(player: Player): CFrame?
 		local session, participant = findParticipant(player)
 		if not session or not participant or (session.State ~= "Running" and session.State ~= "Countdown") then
 			return nil
@@ -583,7 +588,7 @@ function RaceService.Init()
 		local at = checkpoint.Position + Vector3.new(0, 4, 0)
 		return CFrame.lookAt(at, at + checkpoint.Direction)
 	end)
-	RespawnService.SetTeleportBlocker(function(player: Player): string?
+	RespawnService.AddTeleportBlocker(function(player: Player): string?
 		if findParticipant(player) then
 			return "Not during a race"
 		end

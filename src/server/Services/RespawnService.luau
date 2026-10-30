@@ -23,9 +23,10 @@ export type RespawnPoint = {
 local RespawnService = {}
 
 local points: { RespawnPoint } = {}
--- Under ett race bestämmer RaceService var bilen ska respawna och spärrar snabbresa.
-local respawnOverride: ((player: Player) -> CFrame?)? = nil
-local teleportBlocker: ((player: Player) -> string?)? = nil
+-- Lägen (race, aktiviteter, kull) kan bestämma var bilen respawnar och spärra snabbresa.
+-- Första override som returnerar något vinner.
+local respawnOverrides: { (player: Player) -> CFrame? } = {}
+local teleportBlockers: { (player: Player) -> string? } = {}
 local lastReset: { [Player]: number } = {}
 local lastTeleport: { [Player]: number } = {}
 local notifyRemote: RemoteEvent
@@ -53,13 +54,33 @@ function RespawnService.FindNearest(position: Vector3): RespawnPoint?
 	return best
 end
 
-function RespawnService.SetRespawnOverride(override: (player: Player) -> CFrame?)
-	respawnOverride = override
+function RespawnService.AddRespawnOverride(override: (player: Player) -> CFrame?)
+	table.insert(respawnOverrides, override)
 end
 
 -- Blockeraren returnerar ett meddelande om snabbresa inte är tillåten just nu.
-function RespawnService.SetTeleportBlocker(blocker: (player: Player) -> string?)
-	teleportBlocker = blocker
+function RespawnService.AddTeleportBlocker(blocker: (player: Player) -> string?)
+	table.insert(teleportBlockers, blocker)
+end
+
+-- Slumpar en gatupunkt mellan minDistance och maxDistance från `origin` (för budjobb m.m.).
+function RespawnService.RandomPointNear(origin: Vector3, minDistance: number, maxDistance: number, rng: Random?): RespawnPoint?
+	local random = rng or Random.new()
+	local candidates = {}
+	for _, point in points do
+		local distance = ((point.Position - origin) * Vector3.new(1, 0, 1)).Magnitude
+		if distance >= minDistance and distance <= maxDistance and MapData.IsInBounds(point.Position) then
+			table.insert(candidates, point)
+		end
+	end
+	if #candidates == 0 then
+		return nil
+	end
+	return candidates[random:NextInteger(1, #candidates)]
+end
+
+function RespawnService.PointCFrame(point: RespawnPoint): CFrame
+	return pointCFrame(point)
 end
 
 function RespawnService.RespawnOnRoad(player: Player, message: string?)
@@ -67,7 +88,13 @@ function RespawnService.RespawnOnRoad(player: Player, message: string?)
 	if not car or not car.PrimaryPart then
 		return
 	end
-	local target = respawnOverride and respawnOverride(player)
+	local target: CFrame? = nil
+	for _, override in respawnOverrides do
+		target = override(player)
+		if target then
+			break
+		end
+	end
 	if not target then
 		local point = RespawnService.FindNearest(car.PrimaryPart.Position)
 		target = if point then pointCFrame(point) else MapData.PlayerSpawn(1)
@@ -100,7 +127,13 @@ local function onTeleportRequested(player: Player, locationId: unknown)
 	if not location then
 		return
 	end
-	local blocked = teleportBlocker and teleportBlocker(player)
+	local blocked: string? = nil
+	for _, blocker in teleportBlockers do
+		blocked = blocker(player)
+		if blocked then
+			break
+		end
+	end
 	if blocked then
 		notifyRemote:FireClient(player, blocked, "info")
 		return

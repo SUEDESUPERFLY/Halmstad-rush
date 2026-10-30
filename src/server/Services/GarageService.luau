@@ -10,7 +10,7 @@ local CarCatalog = require(ReplicatedStorage.Shared.Config.CarCatalog)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local DataService = require(script.Parent.DataService)
 local EconomyService = require(script.Parent.EconomyService)
-local RaceService = require(script.Parent.RaceService)
+local PlayerMode = require(script.Parent.Parent.Util.PlayerMode)
 local VehicleService = require(script.Parent.VehicleService)
 
 local GarageService = {}
@@ -130,8 +130,8 @@ local function onGarageAction(player: Player, action: unknown, carId: unknown, a
 	if not car or not data then
 		return
 	end
-	if RaceService.IsRacing(player) then
-		notify(player, "The garage is closed during a race")
+	if not PlayerMode.IsFree(player) then
+		notify(player, "The garage is closed right now – finish what you're doing first")
 		return
 	end
 

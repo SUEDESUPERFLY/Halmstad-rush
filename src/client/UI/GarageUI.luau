@@ -9,6 +9,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local CarCatalog = require(ReplicatedStorage.Shared.Config.CarCatalog)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local ActivityController = require(script.Parent.Parent.Controllers.ActivityController)
 local RaceController = require(script.Parent.Parent.Controllers.RaceController)
 local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
 
@@ -227,7 +228,7 @@ refresh = function()
 end
 
 local function setOpen(open: boolean)
-	if open and RaceController.IsRacing() then
+	if open and (RaceController.IsRacing() or ActivityController.IsActive()) then
 		return
 	end
 	window.Visible = open

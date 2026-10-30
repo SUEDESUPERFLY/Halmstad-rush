@@ -134,6 +134,30 @@ build/      -> byggd placefil (committas)
 - **Garagemenyn** (`GarageUI`) öppnas med G eller GARAGE-knappen och visar bara det servern skickat.
 - **För riktig sparning i Studio** måste placet vara publicerat (File → Publish to Roblox) och Game Settings → Security → "Enable Studio Access to API Services" vara påslaget.
 
+## Aktiviteter (fas 6)
+- **`PlayerMode`** (`src/server/Util`) håller koll på om en spelare är i ett läge: `Race`, `Activity` eller `Tag`. Bara ett läge åt gången, och garaget är stängt under alla lägen.
+- **`RespawnService`:** `AddRespawnOverride` och `AddTeleportBlocker` kan nu ha flera lägen samtidigt (race, aktivitet, kull). `RandomPointNear` slumpar gatupunkter, till exempel för budjobb.
+- **`ActivityService`** hanterar aktiviteter för en spelare åt gången. Modulerna ligger i `src/server/Activities/` och har `Start`, `Update` och vid behov `OnWreck`, `RespawnCFrame`, `Stop` och `OnNpcEvent`.
+  - Markörerna (`ActivityConfig.Activities`) snäpps till närmaste gata, utom när `SnapMarker = false`.
+  - Inbjudan (`ActivityInvite`) går ut när bilen är i ringen. Klienten skickar `RequestActivity(id)`, och servern kontrollerar avstånd och läge.
+  - Modulerna får bara använda `api` (bland annat `SetState`, `Finish`, `MoveCar` och `RandomRoadPoint`).
+  - `Finish` betalar ut via `EconomyService` och skickar `ActivityResult`. Klienten får bara visningsdata (`ActivityState`: Title, Role, Objective, EndsAt, CountdownTo, Score, Target, TargetLabel).
+- **Aktiviteterna:**
+  - **Delivery** (Pizzabud, Taxi): 3 slumpade mål på riktiga gator. Klockan räknas från avståndet. Betalningen är bas plus tidsbonus, och varje kvaddning kostar `WreckPenalty`. Man måste stanna (`ArriveMaxSpeed`) vid målet.
+  - **StuntJump** (Strandhoppet, Tylösandshoppet): ramperna ligger på stränderna. Servern mäter uppskjut (bilen högt över marken nära rampens topp) och landning, och avståndet ger brons, silver eller guld. Tre försök, och bilen ställs tillbaka på startsträckan mellan dem.
+  - **Drift** (Driftkungen): servern räknar poäng från bilens fart i sidled (replikerad, begränsad av fartkontrollen) i 45 s. En krock kostar poäng.
+  - **CrashMode** (Krockläget): en avskild industrikorsning vid `CrashMode.Origin` (x 6000, z −2200), som bokas av en spelare åt gången.
+    - Korsande trafik (NPC-typen `Arena`) och en nedräkning med låst bil.
+    - Skadevärdet räknas från `NpcService.OnEvent` ("Impact" och "Wrecked"), med kedjebonus.
+    - Belöningen är skadevärdet / `ScorePerKrona`, högst `MaxReward`. Efteråt flyttas bilen tillbaka till markören.
+- **`TagService`** (Kull med bilar): lobby (`LobbyTime`), sedan en runda på `RoundTime`.
+  - Den som är "den" tar över rollen genom att komma inom `TagDistance` (och kan inte tas tillbaka direkt, `TagImmunity`).
+  - Kortast tid som "den" vinner, och `Rewards` delas ut efter placering.
+  - NPC-bilar (typen `Chaser`) fyller ut till `MinParticipants`. Som "den" jagar de med `Npc.Target` och enkel hinderundvikning, annars kör de runt på ringen.
+  - Deltagarna ligger i kollisionsgruppen `TagCars`.
+- **`NpcService`** har nu `SpawnOnRoute`, `Npc.Target` (styr mot en punkt), `Npc.RespawnAt` och `OnEvent`.
+- **Klient:** `ActivityController` sköter remotes, ett ljus vid målet med avstånd och "håll still" vid `CountdownTo`. `ActivityUI` har startknappen (E), panelen (avbryt), nedräkningen och resultatet.
+
 ## Kontroller
 | | Tangentbord | Handkontroll | Touch |
 |---|---|---|---|
@@ -146,6 +170,7 @@ build/      -> byggd placefil (committas)
 | Snabbresa | M | Select | MAP-knappen |
 | Starta/gå med i race (vid startlinjen) | E | B | knappen START RACE |
 | Garage | G | – | GARAGE-knappen |
+| Starta aktivitet (vid markören) | E | B | knappen STARTA |
 
 ## Beslut
 | Beslut | Val |
@@ -154,7 +179,7 @@ build/      -> byggd placefil (committas)
 | Kartan | Genereras från turistkartan över Halmstad (färgklassning till Terrain + hus). Korrekt gatunät, komprimerat ≈ 1:3,6 |
 | Spelarkrockar | Spöken mot varandra i fri roam (kollisionsgruppen `Cars`, inte kolliderbar med sig själv, införd i fas 2). Krockar bara i race och jaktläge. NPC-bilar går alltid att krocka med |
 | Språk | Engelska som bas i UI, svensk översättning via Robloxs Localization. Platsnamn alltid på svenska |
-| Krockläge | Avskild korsning i industrizonen som bokas av en spelare åt gången |
+| Krockläge | Avskild industrikorsning (egen plats utanför stan, x 6000 / z −2200) som bokas av en spelare åt gången. Markören står i hamnens industriområde |
 | Slow motion | Fejkas på klienten (krockkamera, lokala vrakdelar). Fysiken på servern saktas aldrig ner |
 | Max spelare | 10. Ställs in i Game Settings → Places på roblox.com (går inte att sätta i placefilen) |
 
@@ -164,8 +189,8 @@ build/      -> byggd placefil (committas)
 - [x] Fas 2: Halmstad från riktiga stadskartan + respawn-system
 - [x] Fas 3: Krockar, takedowns, krockkamera, enkla NPC-bilar
 - [x] Fas 4: Första racet + poäng/pengar (i minnet)
-- [ ] Fas 5: DataStore (retry, sessionslås, versionerat schema), garage, bilköp, uppgraderingar, lackering *(byggd, väntar på test)*
-- [ ] Fas 6: Stunts, budjobb, kull-jaktläge, krockläge
+- [x] Fas 5: DataStore (retry, sessionslås, versionerat schema), garage, bilköp, uppgraderingar, lackering
+- [ ] Fas 6: Stunts, budjobb, kull-jaktläge, krockläge *(byggd, väntar på test)*
 - [ ] Fas 7: Butik, game passes, developer products, daglig belöning
 - [ ] Fas 8: Ljud, UI, minikarta, mobiloptimering
 
