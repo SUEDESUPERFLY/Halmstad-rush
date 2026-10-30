@@ -5,7 +5,7 @@ Arkadracing i öppen värld i ett stiliserat Halmstad. Byggt för Roblox, skrive
 ## Så testar du (bara webbläsare, inget extra program)
 
 **Varje gång en ny fas är klar**
-1. Öppna https://github.com/SUEDESUPERFLY/halmstad-rush/blob/main/build/HalmstadRush.rbxlx i webbläsaren på datorn (logga in på GitHub).
+1. Öppna https://github.com/SUEDESUPERFLY/Halmstad-rush/blob/main/build/HalmstadRush.rbxlx i webbläsaren på datorn (logga in på GitHub).
 2. Klicka på nedladdningsikonen (**Download raw file**, pilen uppe till höger ovanför filinnehållet).
 3. Öppna Roblox Studio → *File → Open from File…* → välj den nedladdade `HalmstadRush.rbxlx`.
 4. Tryck **Play** (F5).
