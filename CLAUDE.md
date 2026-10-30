@@ -236,9 +236,9 @@ build/      -> byggd placefil (committas)
 - [x] Fas 3: Krockar, takedowns, krockkamera, enkla NPC-bilar
 - [x] Fas 4: Första racet + poäng/pengar (i minnet)
 - [x] Fas 5: DataStore (retry, sessionslås, versionerat schema), garage, bilköp, uppgraderingar, lackering
-- [ ] Fas 6: Stunts, budjobb, kull-jaktläge, krockläge *(byggd, väntar på test)*
-- [ ] Fas 7: Butik, game passes, developer products, daglig belöning *(byggd, väntar på test)*
-- [ ] Fas 8: Ljud, UI, minikarta, mobiloptimering *(byggd, väntar på test)*
+- [x] Fas 6: Stunts, budjobb, kull-jaktläge, krockläge
+- [x] Fas 7: Butik, game passes, developer products, daglig belöning
+- [x] Fas 8: Ljud, UI, minikarta, mobiloptimering
 
 ## Kända begränsningar / att göra
 - Lint i molnmiljön: `stylua --syntax luau --check` (syntax) och `selene src` (`selene.toml`, egen std `roblox_min.yml` där Roblox-globaler bara deklareras). Ingen typkontroll (luau-lsp saknas), så typfel syns först i Studios Output-fönster. Verktygen installeras med `cargo install stylua selene` om de saknas.
