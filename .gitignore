@@ -6,3 +6,8 @@ Thumbs.db
 # Studio-autosave och lokala kopior
 *.rbxl.lock
 *.rbxlx.lock
+
+# Kartbilder (källmaterial, committas inte)
+*.pdf
+city-*.png
+preview.png

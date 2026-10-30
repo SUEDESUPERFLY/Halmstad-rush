@@ -13,7 +13,7 @@ local VehicleController = require(script.Parent.Parent.Controllers.VehicleContro
 local LocationMenu = {}
 
 local gui: ScreenGui
-local panel: Frame
+local panel: ScrollingFrame
 local teleportRemote: RemoteEvent
 
 local function corner(parent: Instance, radius: number)
@@ -49,12 +49,16 @@ local function build()
 		setOpen(not panel.Visible)
 	end)
 
-	panel = Instance.new("Frame")
-	panel.Name = "Panel"
-	panel.Visible = false
-	panel.Position = UDim2.fromOffset(16, 118)
-	panel.Size = UDim2.fromOffset(240, 0)
-	panel.AutomaticSize = Enum.AutomaticSize.Y
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.Name = "Panel"
+	scroll.Visible = false
+	scroll.Position = UDim2.fromOffset(16, 118)
+	scroll.Size = UDim2.new(0, 240, 1, -140)
+	scroll.CanvasSize = UDim2.new()
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scroll.ScrollBarThickness = 6
+	scroll.BorderSizePixel = 0
+	panel = scroll
 	panel.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
 	panel.BackgroundTransparency = 0.2
 	panel.Parent = gui

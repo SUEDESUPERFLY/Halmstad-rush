@@ -3,6 +3,7 @@
 --  * R / ↻: ställ bilen på hjulen där den står. Två tryck inom några sekunder = till närmaste väg.
 --  * Automatiskt till närmaste väg om bilen hamnar i vattnet eller utanför kartan.
 --  * Snabbresa till namngivna platser (MapData.Locations), med cooldown.
+-- Respawnpunkterna läggs till av MapService (gatorna) och TestTrackService.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -25,11 +26,6 @@ local points: { RespawnPoint } = {}
 local lastReset: { [Player]: number } = {}
 local lastTeleport: { [Player]: number } = {}
 local notifyRemote: RemoteEvent
-
-local function yawFromDirection(direction: Vector2): number
-	-- LookVector för yaw θ är (-sin θ, 0, -cos θ)
-	return math.deg(math.atan2(-direction.X, -direction.Y))
-end
 
 local function pointCFrame(point: RespawnPoint): CFrame
 	return CFrame.new(point.Position + Vector3.new(0, 4, 0)) * CFrame.Angles(0, math.rad(point.Yaw), 0)
@@ -67,22 +63,6 @@ function RespawnService.RespawnOnRoad(player: Player, message: string?)
 	end
 end
 
-local function buildRoadPoints()
-	for _, road in MapData.Roads do
-		for i = 1, #road.Points - 1 do
-			local a = road.Points[i]
-			local b = road.Points[i + 1]
-			local direction = (b - a).Unit
-			local length = (b - a).Magnitude
-			local yaw = yawFromDirection(direction)
-			for distance = 0, length, Settings.RoadPointSpacing do
-				local p = a + direction * distance
-				table.insert(points, { Position = Vector3.new(p.X, 0, p.Y), Yaw = yaw })
-			end
-		end
-	end
-end
-
 local function onResetRequested(player: Player)
 	local now = os.clock()
 	local previous = lastReset[player] or -math.huge
@@ -111,14 +91,20 @@ local function onTeleportRequested(player: Player, locationId: unknown)
 		return
 	end
 	lastTeleport[player] = now
-	if VehicleService.MoveCar(player, MapData.LocationCFrame(location)) then
+	local target = MapData.LocationCFrame(location)
+	if location.SnapToRoad then
+		local point = RespawnService.FindNearest(location.Position)
+		if point then
+			target = pointCFrame(point)
+		end
+	end
+	if VehicleService.MoveCar(player, target) then
 		notifyRemote:FireClient(player, location.Name, "location")
 	end
 end
 
 function RespawnService.Init()
 	notifyRemote = Remotes.Get("Notify")
-	buildRoadPoints()
 	Remotes.Get("ResetVehicle").OnServerEvent:Connect(onResetRequested)
 	Remotes.Get("TeleportToLocation").OnServerEvent:Connect(onTeleportRequested)
 end

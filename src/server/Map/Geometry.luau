@@ -1,5 +1,5 @@
 --!strict
--- Byggstenar för block-out: lådor, plattor, vägsegment, ramper, cylindrar och terrängkullar.
+-- Byggstenar: lådor, plattor, remsor, ramper, cylindrar, klot och skylttext.
 
 local Geometry = {}
 
@@ -122,6 +122,78 @@ function Geometry.Cylinder(
 	return part
 end
 
+-- Del mellan två godtyckliga punkter (t.ex. palmstam). Cylinder om `round` är sant.
+function Geometry.Between(
+	parent: Instance,
+	name: string,
+	a: Vector3,
+	b: Vector3,
+	thickness: number,
+	color: Color3,
+	material: Enum.Material?,
+	round: boolean?
+): Part
+	local length = (b - a).Magnitude
+	local cframe = CFrame.lookAt((a + b) / 2, b) * CFrame.Angles(0, math.rad(90), 0)
+	local part = Geometry.Part(parent, name, Vector3.new(length, thickness, thickness), cframe, color, material)
+	if round then
+		part.Shape = Enum.PartType.Cylinder
+	end
+	return part
+end
+
+-- Text på en parts yta (skyltar). Statisk text från oss, inte från spelare.
+function Geometry.Label(
+	part: BasePart,
+	face: Enum.NormalId,
+	text: string,
+	subText: string?,
+	background: Color3,
+	textColor: Color3?
+): SurfaceGui
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = face
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 20
+	gui.LightInfluence = 0.2
+	gui.Parent = part
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.BackgroundColor3 = background
+	frame.BorderSizePixel = 0
+	frame.Parent = gui
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.new(1, 1, 1)
+	stroke.Thickness = 6
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = frame
+
+	local main = Instance.new("TextLabel")
+	main.BackgroundTransparency = 1
+	main.Position = UDim2.fromScale(0.04, if subText then 0.08 else 0.1)
+	main.Size = UDim2.fromScale(0.92, if subText then 0.55 else 0.8)
+	main.Font = Enum.Font.GothamBlack
+	main.TextScaled = true
+	main.Text = text
+	main.TextColor3 = textColor or Color3.new(1, 1, 1)
+	main.Parent = frame
+
+	if subText then
+		local sub = Instance.new("TextLabel")
+		sub.BackgroundTransparency = 1
+		sub.Position = UDim2.fromScale(0.08, 0.64)
+		sub.Size = UDim2.fromScale(0.84, 0.28)
+		sub.Font = Enum.Font.GothamBold
+		sub.TextScaled = true
+		sub.Text = subText
+		sub.TextColor3 = textColor or Color3.new(1, 1, 1)
+		sub.Parent = frame
+	end
+	return gui
+end
+
 function Geometry.Ball(parent: Instance, name: string, center: Vector3, radius: number, color: Color3): Part
 	local part = Geometry.Part(parent, name, Vector3.one * radius * 2, CFrame.new(center), color)
 	part.Shape = Enum.PartType.Ball
@@ -162,57 +234,6 @@ function Geometry.RampTop(start: Vector3, yawDeg: number, length: number, angleD
 	local flatForward = CFrame.Angles(0, math.rad(yawDeg), 0).LookVector
 	local angle = math.rad(angleDeg)
 	return start + flatForward * length * math.cos(angle) + Vector3.yAxis * length * math.sin(angle)
-end
-
--- Mjuk kulle i Terrain: platt topp inom flatRadius, cosinus-sluttning ut till radius.
-function Geometry.TerrainHill(center: Vector2, flatRadius: number, radius: number, height: number, material: Enum.Material)
-	local terrain = workspace.Terrain
-	local resolution = 4
-	local region = Region3.new(
-		Vector3.new(center.X - radius, 0, center.Y - radius),
-		Vector3.new(center.X + radius, height + resolution, center.Y + radius)
-	):ExpandToGrid(resolution)
-	local regionMin = region.CFrame.Position - region.Size / 2
-	local countX = math.floor(region.Size.X / resolution + 0.5)
-	local countY = math.floor(region.Size.Y / resolution + 0.5)
-	local countZ = math.floor(region.Size.Z / resolution + 0.5)
-
-	local function heightAt(x: number, z: number): number
-		local r = math.sqrt((x - center.X) ^ 2 + (z - center.Y) ^ 2)
-		if r <= flatRadius then
-			return height
-		elseif r >= radius then
-			return 0
-		end
-		local t = (r - flatRadius) / (radius - flatRadius)
-		return height * (0.5 + 0.5 * math.cos(math.pi * t))
-	end
-
-	local materials = table.create(countX)
-	local occupancies = table.create(countX)
-	for ix = 1, countX do
-		local x = regionMin.X + (ix - 0.5) * resolution
-		local matX = table.create(countY)
-		local occX = table.create(countY)
-		for iy = 1, countY do
-			matX[iy] = table.create(countZ)
-			occX[iy] = table.create(countZ)
-		end
-		for iz = 1, countZ do
-			local z = regionMin.Z + (iz - 0.5) * resolution
-			local surface = heightAt(x, z)
-			for iy = 1, countY do
-				local y0 = regionMin.Y + (iy - 1) * resolution
-				local occupancy = math.clamp((surface - y0) / resolution, 0, 1)
-				matX[iy][iz] = if occupancy > 0 then material else Enum.Material.Air
-				occX[iy][iz] = occupancy
-			end
-		end
-		materials[ix] = matX
-		occupancies[ix] = occX
-	end
-
-	terrain:WriteVoxels(region, resolution, materials, occupancies)
 end
 
 return Geometry

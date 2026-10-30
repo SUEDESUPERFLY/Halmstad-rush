@@ -51,21 +51,29 @@ build/      -> byggd placefil (committas)
 - Backhjälp (`HillAssist`): i uppförsbacke tas en del av tyngdkraften bort när man gasar, så att man kan köra upp på Galgberget.
 - Fjädringens raycasts använder kollisionsgruppen `Cars`, så de ignorerar andra bilar (spökläge).
 
-## Kartan (fas 2)
-- All kartdata finns i `src/shared/Map/MapData.luau`: vägar (polylinjer), broar, zoner, kvarter, kullar, ramper, landmärken, platser (snabbresa) och stadsdelar (namnskylt). X = öster, Z = söder, marken på Y = 0.
-- `MapService` bygger kartan när servern startar, med hjälp av `src/server/Map/Geometry.luau` (byggstenar) och `Landmarks.luau` (slott, Norre port, fontän, torn, hotell, brygga, hamn och kvartersfyllning). Fröet `MAP_SEED` gör att staden blir likadan varje gång.
-- Höjdlager för att undvika flimmer: mark 0, zoner `Layer * 0.04`, vägar 0,16, vägmarkeringar 0,2.
-- Kullar (Galgberget, puckelbanan, dyner) byggs som Terrain med `WriteVoxels`. Kullarnas regioner får inte överlappa varandra.
-- Vattnet (Nissan och havet) består av genomskinliga parts utan kollision. Vattenytan ligger på Y = -3.
-- Testbanan från fas 1 ligger kvar vid `MapData.TestTrackOrigin` (x = 6000) och nås via snabbresemenyn.
-- Reserverad krockkorsning: `MapData.CrashJunction` (Industrigatan × Hamnvägen).
-- Parts med attributet `Obstacle` (hus, träd, räcken, containrar, pelare) ger nära-ögat-boost.
+## Kartan (fas 2): det riktiga Halmstad
+- **Mål: korrekt Halmstad, som GTA V återger Los Angeles.** Rätt gatunät och rätt platser, komprimerat. Inget påhittat "kaliforniskt": inga palmer, ingen Hollywood-skylt och inget pariserhjul.
+- **Källa:** turistkartan "Halmstad City 2023" (Destination Halmstad, PDF från användaren). `tools/map/build_city.py` färgklassar kartbilden (vita/gula gator, orange kvarter, grönt, vatten, grå ytor, mörkröda större byggnader) och skriver `src/server/Map/Generated/`:
+  - `CityGrid.luau`: markmaterial per 4x4-studs-ruta (RLE). Koder: A/Y gata, B kvarter, P park, W vatten, D brodäck, G grå yta, F fält, S idrottsplats, R större byggnad, N sand.
+  - `CityBuildings.luau`: husfotavtryck (stenstad med gårdar i centrum, flerfamiljshus i mellanzonen, villor längre ut, tegelbyggnader för de mörkröda ytorna).
+  - `CityRoadPoints.luau`: respawnpunkter mitt på gatorna med riktning.
+  - Köra om: `pdftoppm -r 194 -png karta.pdf city` och sedan `python3 tools/map/build_city.py city-1.png --preview preview.png`. Kartbilden committas inte, bara den genererade datan.
+- **Skala:** 1 kartpixel = 2 studs (≈ 1:3,6). Origo (0, 0) = Stora torg. X = öster, Z = söder. Marken ligger på Y = 0, vattenytan på Y = -4.
+- **Terrain** för all mark: gator är asfalt i Terrain, broar är asfaltsdäck med vatten under (`D`). Galgberget är en kulle (`MapData.Hills`), och gator och hus i backen följer den via `MapData.GroundHeightAt`.
+- **Utanför stadskartan** (byggs i `CityBuilder` och `MapService`): en kustremsa med Strandvägen och Östra stranden söder om kartan, havet (Laholmsbukten), Tylösandsvägen västerut till Tylösand (komprimerad), samt pir och fyr vid Nissans mynning.
+- **Handplacerade landmärken** (`MapData.Landmarks`, byggs i `Landmarks.luau`): fontänen "Europa och tjuren" på Stora torg, S:t Nikolai kyrka, Halmstads slott, Norre port, Stadsbiblioteket över Nissan, Utsiktstornet, Hallandsgården, strandhotellet (generiskt namn), badbryggan, vindkraftverk och svenska flaggor. `RESERVED` i byggskriptet håller husgeneratorn borta från dem.
+- Riktiga gatu- och platsnamn är okej. Företag får generiska namn.
+- Stadsdelsnamnet visas efter närmaste etikett från kartan (`MapData.Districts`), med `SpecialAreas` som undantag (Stora torg, Tylösand och liknande).
+- Byggnader och andra hinder har attributet `Obstacle` och ger nära-ögat-boost.
+- Testbanan från fas 1 ligger kvar vid `MapData.TestTrackOrigin` (x = 6000).
+- Grenen `wip/detaljerad-karta` innehåller ett avbrutet kaliforniskt spår. Använd det inte.
 
 ## Respawn (fas 2)
 - `RespawnService` äger remotes för `ResetVehicle` och `TeleportToLocation` och skickar meddelanden till klienten via `Notify`.
 - R / ↻: ställer bilen på hjulen där den står. Ett andra tryck inom `Respawn.DoubleResetWindow` (4 s) flyttar bilen till närmaste väg.
 - Automatiskt till närmaste väg om chassit hamnar under vattenytan + 1, eller utanför `MapData.Bounds`.
-- Respawnpunkter skapas längs alla vägar var 50:e stud, med riktning längs vägen. Testbanan lägger till egna punkter.
+- Respawnpunkter: genererade mitt på stadens gator (`CityRoadPoints`), plus punkter var 50:e stud längs `MapData.ExtraRoads` och testbanan.
+- Snabbresa med `SnapToRoad` flyttar bilen till närmaste gatupunkt från platsens läge.
 - Snabbresa: klienten skickar bara ett plats-id. Servern kontrollerar typ, längd, att platsen finns och en cooldown på 5 s.
 - Alla serverflyttar går via `VehicleService.MoveCar` / `UprightCar`, som tar över nätverksägarskapet en kort stund och pausar teleportkontrollen.
 
@@ -84,7 +92,7 @@ build/      -> byggd placefil (committas)
 | Beslut | Val |
 |---|---|
 | Leverans | Placefil (`build/HalmstadRush.rbxlx`) som laddas ner från GitHub på webben. Ingen Rojo och inget GitHub Desktop hos användaren |
-| Kartan | Block-out genereras av kod från en datamodul. Detaljer senare som `.rbxm` i `assets/` |
+| Kartan | Genereras från turistkartan över Halmstad (färgklassning till Terrain + hus). Korrekt gatunät, komprimerat ≈ 1:3,6 |
 | Spelarkrockar | Spöken mot varandra i fri roam (kollisionsgruppen `Cars`, inte kolliderbar med sig själv, införd i fas 2). Krockar bara i race och jaktläge. NPC-bilar går alltid att krocka med |
 | Språk | Engelska som bas i UI, svensk översättning via Robloxs Localization. Platsnamn alltid på svenska |
 | Krockläge | Avskild korsning i industrizonen som bokas av en spelare åt gången |
@@ -105,4 +113,5 @@ build/      -> byggd placefil (committas)
 ## Kända begränsningar / att göra
 - Ingen Luau-linter körs i molnmiljön. Fel syns först i Studios Output-fönster.
 - Andra spelare ser inte hjulens fjädring och rotation (fixas vid behov i fas 8).
-- Kartan har inte StreamingEnabled-optimering ännu (fas 8).
+- Kartan har inte StreamingEnabled-optimering ännu (fas 8). Cirka 5 600 hus som Parts plus Terrain.
+- Gatorna saknar vägmarkeringar. Husen är enkla block utan tak och fönster (polering senare).
