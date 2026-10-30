@@ -190,6 +190,17 @@ build/      -> byggd placefil (committas)
   - Dekordelar kastar inga skuggor, och plåtdelarna är färre på pekskärm.
 - **ScreenGui-ordning (`DisplayOrder`):** fönster (garage och butik) 10, snabbresemenyn 5, övrigt 0.
 
+## Språk
+- **All text i koden skrivs på engelska.** Svenska översättningar ligger i `src/shared/Localization/Swedish.luau`, med den engelska källtexten som nyckel. Saknas en översättning visas engelskan.
+- **`Locale`** (`src/shared/Localization/Locale.luau`) väljer svenska på klienten om `LocalizationService.RobloxLocaleId` börjar på `sv`. Alla andra språk får engelska.
+  - Klienten: `Locale.T(text, ...)` översätter och formaterar (`%d`/`%s`). `Locale.Resolve(msg)` gör om en sträng eller `Locale.Msg` till text.
+  - Servern översätter aldrig. Den skickar engelska strängar eller `Locale.Msg(format, ...)` i `Notify`, `ActivityState`, `ActivityResult`, inbjudningar och `AddMoney(reason)`. Argument som är `Msg` översätts också, vanliga strängar (spelarnamn) lämnas orörda.
+  - Kick-meddelanden: `Locale.ForPlayer(player, text)` (läser `player.LocaleId` på servern).
+  - Skyltar som servern bygger märks med `Geometry.Localize` (taggen `Localize`) och översätts av `LocaleController` på klienten.
+- Platsnamn, bilnamn och racenamn översätts inte. Gatuskyltar i världen är på svenska, som i riktiga Halmstad.
+- Ny text: skriv den på engelska och lägg till en rad i `Swedish.luau`.
+- Testa i Studio: Test → Player Emulator → Locale (t.ex. `sv-se` eller `en-us`).
+
 ## Kontroller
 | | Tangentbord | Handkontroll | Touch |
 |---|---|---|---|
@@ -213,7 +224,7 @@ build/      -> byggd placefil (committas)
 | Leverans | Placefil (`build/HalmstadRush.rbxlx`) som laddas ner från GitHub på webben. Ingen Rojo och inget GitHub Desktop hos användaren |
 | Kartan | Genereras från turistkartan över Halmstad (färgklassning till Terrain + hus). Korrekt gatunät, komprimerat ≈ 1:3,6 |
 | Spelarkrockar | Spöken mot varandra i fri roam (kollisionsgruppen `Cars`, inte kolliderbar med sig själv, införd i fas 2). Krockar bara i race och jaktläge. NPC-bilar går alltid att krocka med |
-| Språk | Engelska som bas i UI, svensk översättning via Robloxs Localization. Platsnamn alltid på svenska |
+| Språk | Engelska som bas i UI, svensk översättning för spelare med svenska som Roblox-språk (egen ordlista, se "Språk"). Platsnamn och bilnamn alltid på svenska |
 | Krockläge | Avskild industrikorsning (egen plats utanför stan, x 6000 / z −2200) som bokas av en spelare åt gången. Markören står i hamnens industriområde |
 | Slow motion | Fejkas på klienten (krockkamera, lokala vrakdelar). Fysiken på servern saktas aldrig ner |
 | Max spelare | 10. Ställs in i Game Settings → Places på roblox.com (går inte att sätta i placefilen) |
@@ -233,7 +244,6 @@ build/      -> byggd placefil (committas)
 - Lint i molnmiljön: `stylua --syntax luau --check` (syntax) och `selene src` (`selene.toml`, egen std `roblox_min.yml` där Roblox-globaler bara deklareras). Ingen typkontroll (luau-lsp saknas), så typfel syns först i Studios Output-fönster. Verktygen installeras med `cargo install stylua selene` om de saknas.
 - Andra spelare ser inte hjulens fjädring och rotation.
 - Cirka 5 600 hus som Parts plus Terrain, med StreamingEnabled (fas 8). Testa på en riktig mobil innan publicering.
-- UI-språket är blandat (svenska menyer, engelska spelord som WRECKED!/TAKEDOWN!). Beslutet säger engelska med svensk översättning via Localization, så det behöver stämmas av.
 - Inget motorljud förrän ett ljud-ID läggs in i `SoundConfig.EngineId`.
 - Alla game pass- och produkt-ID:n är inlagda i `ShopConfig`. Passen måste vara "Item for Sale" på roblox.com för att gå att köpa.
 - Krockdetekteringen kan ge falska WRECKED! vid hårda landningar i backar. Justera `Crash.WreckImpact` vid behov.

@@ -4,6 +4,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Signal = require(ReplicatedStorage.Shared.Util.Signal)
 local VehicleController = require(script.Parent.VehicleController)
@@ -89,7 +90,7 @@ local function buildGate(index: number, isNext: boolean)
 		label.TextScaled = true
 		label.TextColor3 = color
 		label.TextStrokeTransparency = 0.2
-		label.Text = if isFinish then "▼ FINISH" else ("▼ %d/%d"):format(index, #current.Checkpoints)
+		label.Text = if isFinish then "▼ " .. Locale.T("FINISH") else ("▼ %d/%d"):format(index, #current.Checkpoints)
 		label.Parent = billboard
 	end
 	model.Parent = gateFolder

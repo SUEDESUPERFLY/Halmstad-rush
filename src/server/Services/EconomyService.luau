@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Leaderstats = require(script.Parent.Parent.Util.Leaderstats)
 local DataService = require(script.Parent.DataService)
@@ -24,8 +25,8 @@ function EconomyService.GetMoney(player: Player): number
 	return if data then data.Money else 0
 end
 
--- Betalar ut ett belopp. `reason` visas för spelaren.
-function EconomyService.AddMoney(player: Player, amount: number, reason: string?): boolean
+-- Betalar ut ett belopp. `reason` (engelsk text eller Locale.Msg) visas för spelaren.
+function EconomyService.AddMoney(player: Player, amount: number, reason: Locale.Message?): boolean
 	if player.Parent ~= Players or not validAmount(amount) then
 		warn(("[EconomyService] Ogiltig utbetalning %s till %s"):format(tostring(amount), player.Name))
 		return false
@@ -35,7 +36,10 @@ function EconomyService.AddMoney(player: Player, amount: number, reason: string?
 		data.Money += rounded
 	end)
 	if ok then
-		notifyRemote:FireClient(player, ("+%d kr%s"):format(rounded, if reason then "  " .. reason else ""), "money")
+		local message = if reason
+			then Locale.Msg("+%d kr  %s", rounded, if typeof(reason) == "string" then Locale.Msg(reason) else reason)
+			else Locale.Msg("+%d kr", rounded)
+		notifyRemote:FireClient(player, message, "money")
 	end
 	return ok
 end

@@ -12,6 +12,7 @@ local RunService = game:GetService("RunService")
 local ActivityConfig = require(ReplicatedStorage.Shared.Config.ActivityConfig)
 local MapData = require(ReplicatedStorage.Shared.Map.MapData)
 local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Geometry = require(script.Parent.Parent.Map.Geometry)
 local PlayerMode = require(script.Parent.Parent.Util.PlayerMode)
@@ -69,7 +70,7 @@ local function findParticipant(player: Player): Participant?
 	return nil
 end
 
-local function notifyAll(text: string, kind: string)
+local function notifyAll(text: Locale.Message, kind: string)
 	for _, participant in participants do
 		if participant.Player then
 			remotes.Notify:FireClient(participant.Player, text, kind)
@@ -108,9 +109,9 @@ local function setIt(participant: Participant, tagger: Participant?)
 	participant.CannotTag = tagger
 	participant.CannotTagUntil = serverNow() + Tag.TagImmunity
 	if participant.Player then
-		remotes.Notify:FireClient(participant.Player, "DU ÄR DEN!", "takedown")
+		remotes.Notify:FireClient(participant.Player, "YOU'RE IT!", "takedown")
 	end
-	notifyAll(participant.Name .. " är den!", "info")
+	notifyAll(Locale.Msg("%s is it!", participant.Name), "info")
 end
 
 local function sendState()
@@ -127,13 +128,13 @@ local function sendState()
 			end
 			remotes.ActivityState:FireClient(player, {
 				ActivityId = Tag.Id,
-				Title = "KULL",
-				Role = if isIt then "DU ÄR DEN!" else ("Spring! %s är den"):format(if it then it.Name else "?"),
-				Objective = if isIt then "Kom nära någon för att ta dem" else "Håll dig undan",
+				Title = "TAG",
+				Role = if isIt then "YOU'RE IT!" else Locale.Msg("Run! %s is it", if it then it.Name else "?"),
+				Objective = if isIt then "Get close to someone to tag them" else "Stay away",
 				EndsAt = endsAt,
-				Score = ("Din tid som den: %d s"):format(math.floor(participant.ItTime)),
+				Score = Locale.Msg("Your time as it: %d s", math.floor(participant.ItTime)),
 				Target = target,
-				TargetLabel = if isIt then "JAGA" else "DEN",
+				TargetLabel = if isIt then "CHASE" else "IT",
 			})
 		end
 	end
@@ -162,7 +163,7 @@ local function finishRound()
 	end)
 	local lines = {}
 	for position, participant in order do
-		table.insert(lines, ("%d. %s – %d s som den"):format(position, participant.Name, math.floor(participant.ItTime)))
+		table.insert(lines, Locale.Msg("%d. %s – %d s as it", position, participant.Name, math.floor(participant.ItTime)))
 	end
 	for position, participant in order do
 		local player = participant.Player
@@ -170,7 +171,7 @@ local function finishRound()
 			local reward = Tag.Rewards[math.min(position, #Tag.Rewards)]
 			EconomyService.AddMoney(player, reward, Tag.Name)
 			remotes.ActivityResult:FireClient(player, {
-				Title = if position == 1 then "DU VANN KULL!" else ("KULL – plats %d"):format(position),
+				Title = if position == 1 then "YOU WON TAG!" else Locale.Msg("TAG – place %d", position),
 				Lines = lines,
 				Reward = reward,
 				Activity = Tag.Name,
@@ -271,7 +272,7 @@ local function updateRunning(dt: number)
 			local position = other ~= current and positionOf(other)
 			local blocked = current.CannotTag == other and serverNow() < current.CannotTagUntil
 			if position and not blocked and (position - itPosition).Magnitude < Tag.TagDistance then
-				notifyAll(("%s tog %s!"):format(current.Name, other.Name), "nearmiss")
+				notifyAll(Locale.Msg("%s tagged %s!", current.Name, other.Name), "nearmiss")
 				setIt(other, current)
 				break
 			end
@@ -309,7 +310,7 @@ local function onRequest(player: Player, id: unknown)
 		CannotTag = nil,
 		CannotTagUntil = 0,
 	})
-	remotes.Notify:FireClient(player, ("Kull börjar om %d s"):format(math.ceil(lobbyEndsAt - os.clock())), "info")
+	remotes.Notify:FireClient(player, Locale.Msg("Tag starts in %d s", math.ceil(lobbyEndsAt - os.clock())), "info")
 end
 
 function TagService.Init()
@@ -357,6 +358,7 @@ function TagService.Start()
 	label.TextStrokeTransparency = 0.2
 	label.Text = Tag.Name
 	label.Parent = billboard
+	Geometry.Localize(label)
 
 	Players.PlayerRemoving:Connect(function(player)
 		lastInvite[player] = nil
@@ -389,7 +391,7 @@ function TagService.Start()
 					and os.clock() - (lastInvite[player] or 0) > 1
 				then
 					lastInvite[player] = os.clock()
-					local description = if state == "Lobby" then "Kull startar snart – hoppa in!" else Tag.Description
+					local description = if state == "Lobby" then "Tag starts soon – jump in!" else Tag.Description
 					remotes.ActivityInvite:FireClient(player, Tag.Id, Tag.Name, description)
 				end
 			end

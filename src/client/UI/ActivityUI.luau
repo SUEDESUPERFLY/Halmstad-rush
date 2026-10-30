@@ -3,9 +3,11 @@
 -- poäng, avbryt), nedräkning och resultattavla. Visar bara det servern skickar.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local ActivityController = require(script.Parent.Parent.Controllers.ActivityController)
 
 local ActivityUI = {}
@@ -112,7 +114,7 @@ local function build()
 	scoreLabel = label(panel, 16, 22)
 	scoreLabel.LayoutOrder = 5
 	local leave = Instance.new("TextButton")
-	leave.Text = "AVBRYT"
+	leave.Text = Locale.T("QUIT")
 	leave.Font = Enum.Font.GothamBold
 	leave.TextSize = 14
 	leave.TextColor3 = Color3.new(1, 1, 1)
@@ -155,20 +157,20 @@ local function showResult(result: any)
 	end
 	list(resultFrame, 6)
 	local small = label(resultFrame, 14, 18, Color3.fromRGB(200, 200, 210))
-	small.Text = tostring(result.Activity or "")
+	small.Text = Locale.Resolve(result.Activity)
 	small.LayoutOrder = 0
 	local title = label(resultFrame, 30, 38, ACCENT)
 	title.Font = Enum.Font.GothamBlack
-	title.Text = tostring(result.Title or "")
+	title.Text = Locale.Resolve(result.Title)
 	title.LayoutOrder = 1
 	for i, line in result.Lines or {} do
 		local row = label(resultFrame, 16, 22)
-		row.Text = tostring(line)
+		row.Text = Locale.Resolve(line)
 		row.LayoutOrder = 1 + i
 	end
 	local reward = label(resultFrame, 22, 30, Color3.fromRGB(255, 215, 80))
 	reward.Font = Enum.Font.GothamBlack
-	reward.Text = if (result.Reward or 0) > 0 then ("+%d kr"):format(result.Reward) else "Ingen belöning den här gången"
+	reward.Text = if (result.Reward or 0) > 0 then ("+%d kr"):format(result.Reward) else Locale.T("No reward this time")
 	reward.LayoutOrder = 100
 	local ok = Instance.new("TextButton")
 	ok.Text = "OK"
@@ -208,7 +210,7 @@ function ActivityUI.Start()
 		invitedId = id
 		lastInvite = os.clock()
 		local key = if UserInputService.TouchEnabled then "" else " (E)"
-		prompt.Text = ("STARTA%s · %s"):format(key, name)
+		prompt.Text = ("%s%s · %s"):format(Locale.T("START"), key, name)
 		promptDescription.Text = description
 		prompt.Visible = true
 	end)
@@ -224,11 +226,11 @@ function ActivityUI.Start()
 		prompt.Visible = false
 		resultFrame.Visible = false
 		panel.Visible = true
-		titleLabel.Text = tostring(state.Title or "")
-		roleLabel.Text = tostring(state.Role or "")
+		titleLabel.Text = Locale.Resolve(state.Title)
+		roleLabel.Text = Locale.Resolve(state.Role)
 		roleLabel.Visible = state.Role ~= nil
-		objectiveLabel.Text = tostring(state.Objective or "")
-		scoreLabel.Text = tostring(state.Score or "")
+		objectiveLabel.Text = Locale.Resolve(state.Objective)
+		scoreLabel.Text = Locale.Resolve(state.Score)
 	end)
 	ActivityController.Finished:Connect(function(result: any)
 		current = nil
@@ -256,7 +258,7 @@ function ActivityUI.Start()
 		local countdown = state.CountdownTo
 		if typeof(countdown) == "number" and countdown - now > -0.8 then
 			countdownLabel.Visible = true
-			countdownLabel.Text = if countdown - now > 0 then tostring(math.ceil(countdown - now)) else "KÖR!"
+			countdownLabel.Text = if countdown - now > 0 then tostring(math.ceil(countdown - now)) else Locale.T("GO!")
 		else
 			countdownLabel.Visible = false
 		end

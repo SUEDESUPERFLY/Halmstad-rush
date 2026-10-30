@@ -2,30 +2,33 @@
 -- Hjälpruta med kontrollerna. Öppnas med H eller ?-knappen och visas en gång vid första start.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 
 local HelpUI = {}
 
 local ACCENT = Color3.fromRGB(255, 200, 40)
 
--- { Vad, Tangentbord, Handkontroll, Touch }
+-- { Vad, Tangentbord, Handkontroll, Touch } (engelska, översätts i cell())
 local ROWS = {
 	{ "Gas", "W / ↑", "RT", "GAS" },
-	{ "Broms / back", "S / ↓", "LT", "BRAKE" },
-	{ "Styr", "A D / ← →", "Vänster spak", "◀ ▶" },
+	{ "Brake / reverse", "S / ↓", "LT", "BRAKE" },
+	{ "Steer", "A D / ← →", "Left stick", "◀ ▶" },
 	{ "Drift", "Space", "X", "DRIFT" },
 	{ "Boost", "Shift", "A", "BOOST" },
-	{ "Återställ (2 tryck = till väg)", "R", "Y", "↻" },
-	{ "Snabbresa", "M", "Select", "MAP" },
-	{ "Starta race / aktivitet", "E", "B", "START" },
+	{ "Reset (press twice = back to road)", "R", "Y", "↻" },
+	{ "Fast travel", "M", "Select", "MAP" },
+	{ "Start race / activity", "E", "B", "START" },
 	{ "Garage", "G", "–", "GARAGE" },
-	{ "Butik", "B", "–", "SHOP" },
-	{ "Minikarta av/på", "N", "–", "–" },
-	{ "Den här hjälpen", "H", "–", "?" },
+	{ "Shop", "B", "–", "SHOP" },
+	{ "Minimap on/off", "N", "–", "–" },
+	{ "This help", "H", "–", "?" },
 }
 
-local TIPS = "Drifta, flyg och kör nära hinder för att ladda boost. Knuffa trafiken tills den kvaddas för TAKEDOWN!\n"
-	.. "Gröna ringar är aktiviteter, den gula är racet. Pengar köper bilar, uppgraderingar och lack i garaget."
+local TIPS = "Drift, fly and drive close to obstacles to charge boost. Bump traffic until it wrecks for a TAKEDOWN!\n"
+	.. "Green rings are activities, the yellow one is the race. Money buys cars, upgrades and paint in the garage."
 
 local gui: ScreenGui
 local window: Frame
@@ -43,7 +46,7 @@ local function cell(parent: Instance, text: string, x: number, width: number, y:
 	label.TextSize = 15
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextColor3 = color
-	label.Text = text
+	label.Text = Locale.T(text)
 	label.Position = UDim2.new(x, 0, 0, y)
 	label.Size = UDim2.new(width, -6, 0, 22)
 	label.TextTruncate = Enum.TextTruncate.AtEnd
@@ -95,7 +98,7 @@ function HelpUI.Start()
 	title.TextSize = 24
 	title.TextColor3 = ACCENT
 	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.Text = "HALMSTAD RUSH – KONTROLLER"
+	title.Text = Locale.T("HALMSTAD RUSH – CONTROLS")
 	title.Position = UDim2.fromOffset(18, 10)
 	title.Size = UDim2.new(1, -80, 0, 36)
 	title.Parent = window
@@ -126,7 +129,7 @@ function HelpUI.Start()
 	scroll.Parent = window
 
 	local columns = { { 0, 0.4 }, { 0.4, 0.2 }, { 0.6, 0.2 }, { 0.8, 0.2 } }
-	local header = { "", "Tangentbord", "Handkontroll", "Touch" }
+	local header = { "", "Keyboard", "Gamepad", "Touch" }
 	for i, column in columns do
 		cell(scroll, header[i], column[1], column[2], 0, ACCENT, true)
 	end
@@ -144,7 +147,7 @@ function HelpUI.Start()
 	tips.TextXAlignment = Enum.TextXAlignment.Left
 	tips.TextYAlignment = Enum.TextYAlignment.Top
 	tips.TextColor3 = Color3.fromRGB(200, 205, 220)
-	tips.Text = TIPS
+	tips.Text = Locale.T(TIPS)
 	tips.Position = UDim2.fromOffset(0, (#ROWS + 1) * 24 + 12)
 	tips.Size = UDim2.new(1, -10, 0, 70)
 	tips.Parent = scroll

@@ -30,10 +30,10 @@ ActivityConfig.CollisionGroupTag = "TagCars"
 ActivityConfig.Activities = {
 	{
 		Id = "Pizza",
-		Name = "Pizzabud",
+		Name = "Pizza Delivery",
 		Kind = "Delivery",
 		Variant = "Pizza",
-		Description = "Leverera 3 pizzor innan de kallnar. Krocka inte!",
+		Description = "Deliver 3 pizzas before they go cold. Don't crash!",
 		Marker = Vector3.new(-60, 0, -150),
 	},
 	{
@@ -41,14 +41,14 @@ ActivityConfig.Activities = {
 		Name = "Taxi",
 		Kind = "Delivery",
 		Variant = "Taxi",
-		Description = "Hämta och lämna 3 passagerare runt om i stan.",
+		Description = "Pick up and drop off 3 passengers around town.",
 		Marker = Vector3.new(362, 0, 654),
 	},
 	{
 		Id = "StrandHoppet",
-		Name = "Strandhoppet",
+		Name = "Beach Jump",
 		Kind = "StuntJump",
-		Description = "Tre försök: hoppa så långt du kan från rampen på Östra stranden.",
+		Description = "Three tries: jump as far as you can from the ramp at Östra stranden.",
 		Marker = Vector3.new(760, 0, 1818),
 		SnapMarker = false,
 		Ramp = { Start = Vector3.new(900, 0, 1818), Yaw = -90, Length = 36, Angle = 22, Width = 18 },
@@ -58,9 +58,9 @@ ActivityConfig.Activities = {
 	},
 	{
 		Id = "TylosandsHoppet",
-		Name = "Tylösandshoppet",
+		Name = "Tylösand Jump",
 		Kind = "StuntJump",
-		Description = "Tre försök: längsta hoppet längs Tylösands strand.",
+		Description = "Three tries: longest jump along the beach at Tylösand.",
 		Marker = Vector3.new(-4420, 0, 1105),
 		SnapMarker = false,
 		Ramp = { Start = Vector3.new(-4260, 0, 1105), Yaw = -90, Length = 36, Angle = 22, Width = 18 },
@@ -70,18 +70,18 @@ ActivityConfig.Activities = {
 	},
 	{
 		Id = "Driftkungen",
-		Name = "Driftkungen",
+		Name = "Drift King",
 		Kind = "Drift",
-		Description = "45 sekunder: drifta så mycket du kan. Var som helst!",
+		Description = "45 seconds: drift as much as you can. Anywhere!",
 		Marker = Vector3.new(200, 0, 1450),
 		Medals = { 1500, 3000, 5000 },
 		Rewards = { 100, 200, 350 },
 	},
 	{
 		Id = "Krocklaget",
-		Name = "Krockläget",
+		Name = "Crash Mode",
 		Kind = "CrashMode",
-		Description = "Kör in i korsningen i industriområdet och orsaka så mycket plåtskada som möjligt.",
+		Description = "Drive into the junction in the industrial area and cause as much damage as you can.",
 		Marker = Vector3.new(420, 0, 1550),
 	},
 } :: { Activity }
@@ -139,8 +139,8 @@ ActivityConfig.CrashMode = {
 -- Kull med bilar
 ActivityConfig.Tag = {
 	Id = "Kull",
-	Name = "Kull med bilar",
-	Description = "Den som är \"den\" jagar de andra. Kortast tid som \"den\" vinner.",
+	Name = "Car Tag",
+	Description = "Whoever is \"it\" chases the others. Shortest time as \"it\" wins.",
 	Marker = Vector3.new(1768, 0, 376), -- vid Wrangelsgatan
 	LobbyTime = 12,
 	RoundTime = 120,

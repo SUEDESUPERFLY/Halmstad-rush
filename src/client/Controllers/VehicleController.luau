@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Signal = require(ReplicatedStorage.Shared.Util.Signal)
 local Suspension = require(ReplicatedStorage.Shared.Vehicle.Suspension)
@@ -42,7 +43,7 @@ local VehicleController = {}
 
 VehicleController.Entered = Signal.new() -- (car: Model)
 VehicleController.Exited = Signal.new()
-VehicleController.Popup = Signal.new() -- (text: string, kind: string)
+VehicleController.Popup = Signal.new() -- (message: Locale.Message, kind: string)
 VehicleController.Crashed = Signal.new() -- (strength: number, point: Vector3) lätt eller hård smäll
 VehicleController.Wrecked = Signal.new() -- (car: Model, point: Vector3) bilen är kvaddad
 
@@ -369,7 +370,7 @@ local function step(dt: number)
 
 	if grounded >= 2 then
 		if state.Airborne and airTime >= T.MinAirTimeForPopup then
-			VehicleController.Popup:Fire(("AIR %.1fs"):format(airTime), "air")
+			VehicleController.Popup:Fire(Locale.Msg("AIR %.1fs", airTime), "air")
 		end
 		state.Airborne = false
 		airTime = 0

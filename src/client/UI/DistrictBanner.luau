@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local MapData = require(ReplicatedStorage.Shared.Map.MapData)
 local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
 
@@ -41,7 +42,7 @@ end
 local function show(name: string)
 	showToken += 1
 	local token = showToken
-	label.Text = string.upper(name)
+	label.Text = string.upper(Locale.T(name))
 	label.TextTransparency = 0
 	label.TextStrokeTransparency = 0.2
 	task.delay(SHOW_TIME, function()

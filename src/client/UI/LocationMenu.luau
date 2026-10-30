@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local MapData = require(ReplicatedStorage.Shared.Map.MapData)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
@@ -36,7 +37,7 @@ local function build()
 
 	local toggle = Instance.new("TextButton")
 	toggle.Name = "MapButton"
-	toggle.Text = "MAP (M)"
+	toggle.Text = Locale.T("MAP (M)")
 	toggle.Font = Enum.Font.GothamBold
 	toggle.TextSize = 18
 	toggle.TextColor3 = Color3.new(1, 1, 1)
@@ -78,7 +79,7 @@ local function build()
 	layout.Parent = panel
 
 	local title = Instance.new("TextLabel")
-	title.Text = "TRAVEL TO"
+	title.Text = Locale.T("TRAVEL TO")
 	title.Font = Enum.Font.GothamBlack
 	title.TextSize = 18
 	title.TextColor3 = Color3.fromRGB(255, 190, 60)
@@ -90,7 +91,7 @@ local function build()
 	for index, location in MapData.Locations do
 		local button = Instance.new("TextButton")
 		button.Name = location.Id
-		button.Text = location.Name
+		button.Text = Locale.T(location.Name)
 		button.Font = Enum.Font.GothamBold
 		button.TextSize = 18
 		button.TextColor3 = Color3.new(1, 1, 1)

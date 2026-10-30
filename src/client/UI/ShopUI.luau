@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
 local ShopConfig = require(ReplicatedStorage.Shared.Config.ShopConfig)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local EffectsController = require(script.Parent.Parent.Controllers.EffectsController)
 local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
@@ -113,45 +114,45 @@ local function render()
 
 	-- Daglig belöning
 	local daily = shopState.Daily
-	local dailyRow = card(nextOrder(), "Dagens belöning", if daily.Available
-		then ("%d kr att hämta (dag %d i rad)"):format(daily.Reward, daily.Streak + 1)
-		else ("Hämtad! Kom tillbaka i morgon. %d dagar i rad."):format(daily.Streak))
+	local dailyRow = card(nextOrder(), Locale.T("Daily reward"), if daily.Available
+		then Locale.T("%d kr to collect (day %d in a row)", daily.Reward, daily.Streak + 1)
+		else Locale.T("Collected! Come back tomorrow. %d days in a row.", daily.Streak))
 	if daily.Available then
-		button(dailyRow, "HÄMTA", GOLD, function()
+		button(dailyRow, Locale.T("COLLECT"), GOLD, function()
 			actionRemote:FireServer("ClaimDaily")
 		end)
 	end
 
-	label(content, "GAME PASSES · kosmetik och bekvämlighet", 15, 22, ACCENT).LayoutOrder = nextOrder()
+	label(content, Locale.T("GAME PASSES · cosmetics and convenience"), 15, 22, ACCENT).LayoutOrder = nextOrder()
 	for _, pass in ShopConfig.Passes do
 		local owned = shopState.Passes[pass.Key] == true
-		local row = card(nextOrder(), pass.Name .. (if owned then "  ✓" else ""), pass.Description)
+		local row = card(nextOrder(), Locale.T(pass.Name) .. (if owned then "  ✓" else ""), Locale.T(pass.Description))
 		if not owned and pass.Id ~= 0 then
-			button(row, "KÖP", ACCENT, function()
+			button(row, Locale.T("BUY"), ACCENT, function()
 				MarketplaceService:PromptGamePassPurchase(player, pass.Id)
 			end)
 		elseif not owned then
-			label(row, "Inte i butiken än", 13, 32, Color3.fromRGB(160, 160, 170)).Size = UDim2.new(0, 150, 0, 32)
+			label(row, Locale.T("Not in the store yet"), 13, 32, Color3.fromRGB(160, 160, 170)).Size = UDim2.new(0, 150, 0, 32)
 		end
 		if studio then
-			button(row, if owned then "Ta bort (Studio)" else "Testa (Studio)", Color3.fromRGB(150, 150, 160), function()
+			button(row, Locale.T(if owned then "Remove (Studio)" else "Try (Studio)"), Color3.fromRGB(150, 150, 160), function()
 				actionRemote:FireServer("StudioTest", pass.Key)
 			end)
 		end
 	end
 
-	label(content, "EXTRA · engångsköp", 15, 22, ACCENT).LayoutOrder = nextOrder()
+	label(content, Locale.T("EXTRA · one-time purchases"), 15, 22, ACCENT).LayoutOrder = nextOrder()
 	for _, product in ShopConfig.Products do
-		local row = card(nextOrder(), product.Name, product.Description)
+		local row = card(nextOrder(), Locale.T(product.Name), Locale.T(product.Description))
 		if product.Id ~= 0 then
-			button(row, "KÖP", ACCENT, function()
+			button(row, Locale.T("BUY"), ACCENT, function()
 				MarketplaceService:PromptProductPurchase(player, product.Id)
 			end)
 		else
-			label(row, "Inte i butiken än", 13, 32, Color3.fromRGB(160, 160, 170)).Size = UDim2.new(0, 150, 0, 32)
+			label(row, Locale.T("Not in the store yet"), 13, 32, Color3.fromRGB(160, 160, 170)).Size = UDim2.new(0, 150, 0, 32)
 		end
 		if studio then
-			button(row, "Testa (Studio)", Color3.fromRGB(150, 150, 160), function()
+			button(row, Locale.T("Try (Studio)"), Color3.fromRGB(150, 150, 160), function()
 				actionRemote:FireServer("StudioTest", product.Key)
 			end)
 		end
@@ -265,7 +266,7 @@ function ShopUI.Start()
 		end
 		if state.Daily.Available and not toastShown then
 			toastShown = true
-			dailyToast.Text = ("🎁 Dagens belöning: %d kr – tryck här"):format(state.Daily.Reward)
+			dailyToast.Text = "🎁 " .. Locale.T("Daily reward: %d kr – tap here", state.Daily.Reward)
 			dailyToast.Visible = true
 			task.delay(12, function()
 				dailyToast.Visible = false

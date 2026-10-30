@@ -158,8 +158,8 @@ MapData.Districts = {
 -- Områden som vinner över närmaste stadsdel (första träffen gäller)
 MapData.SpecialAreas = {
 	{ Name = "Stora torg", Min = v(-90, -50), Max = v(85, 50) },
-	{ Name = "Testbanan", Min = v(5200, -800), Max = v(6800, 800) },
-	{ Name = "Krockläget", Min = v(5300, -2900), Max = v(6700, -1500) },
+	{ Name = "Test Track", Min = v(5200, -800), Max = v(6800, 800) },
+	{ Name = "Crash Mode", Min = v(5300, -2900), Max = v(6700, -1500) },
 	{ Name = "Tylösand", Min = v(-4800, 900), Max = v(-3300, 2700) },
 	{ Name = "Tylösandsvägen", Min = v(-4800, -1700), Max = v(-2272, 2700) },
 	{ Name = "Östra stranden", Min = v(-60, 1780), Max = v(2800, 2700) },
@@ -177,7 +177,7 @@ MapData.Locations = {
 	{ Id = "RaceStoraRingen", Name = "Race: Stora ringen", Position = Vector3.new(-250, 0, 230), Yaw = -90 },
 	{ Id = "OstraStranden", Name = "Östra stranden", Position = Vector3.new(600, 0, 1776), Yaw = -90 },
 	{ Id = "Tylosand", Name = "Tylösand", Position = Vector3.new(-3500, 0, 1050), Yaw = 90 },
-	{ Id = "Testbanan", Name = "Testbanan", Position = Vector3.new(6000, 0, 300), Yaw = 0 },
+	{ Id = "Testbanan", Name = "Test Track", Position = Vector3.new(6000, 0, 300), Yaw = 0 },
 } :: { Location }
 
 -- Höjden på en kulle i punkten (x, z). Samma formel används när terrängen byggs.

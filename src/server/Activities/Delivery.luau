@@ -5,6 +5,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ActivityConfig = require(ReplicatedStorage.Shared.Config.ActivityConfig)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 
 local D = ActivityConfig.Delivery
 
@@ -26,17 +27,17 @@ local function pushState(ctx: any, api: any)
 	local isTaxi = ctx.Def.Variant == "Taxi"
 	local objective
 	if isTaxi then
-		objective = if data.Stage == "Pickup" then "Hämta passageraren" else "Kör passageraren till målet"
+		objective = if data.Stage == "Pickup" then "Pick up the passenger" else "Drive the passenger to the destination"
 	else
-		objective = "Leverera pizzan"
+		objective = "Deliver the pizza"
 	end
 	api.SetState(ctx, {
-		Title = ("%s %d/%d"):format(ctx.Def.Name, data.Done + 1, D.Count),
+		Title = Locale.Msg("%s %d/%d", Locale.Msg(ctx.Def.Name), data.Done + 1, D.Count),
 		Objective = objective,
 		EndsAt = data.Deadline,
-		Score = ("Intjänat: %d kr"):format(data.Earned),
+		Score = Locale.Msg("Earned: %d kr", data.Earned),
 		Target = data.Target,
-		TargetLabel = if isTaxi and data.Stage == "Pickup" then "PASSAGERARE" else "MÅL",
+		TargetLabel = if isTaxi and data.Stage == "Pickup" then "PASSENGER" else "GOAL",
 	})
 end
 
@@ -69,8 +70,8 @@ function Delivery.Update(ctx: any, api: any, _dt: number)
 		return
 	end
 	if api.ServerNow() > data.Deadline then
-		api.Finish(ctx, "Tiden är ute!", {
-			("Klara: %d/%d"):format(data.Done, D.Count),
+		api.Finish(ctx, "Time's up!", {
+			Locale.Msg("Done: %d/%d", data.Done, D.Count),
 		}, data.Earned)
 		return
 	end
@@ -83,7 +84,7 @@ function Delivery.Update(ctx: any, api: any, _dt: number)
 	if ctx.Def.Variant == "Taxi" and data.Stage == "Pickup" then
 		data.Stage = "Drop"
 		newTarget(ctx, api, root.Position, D.MinDistance, D.MaxDistance)
-		api.Notify(ctx, "Passageraren klev in!", "info")
+		api.Notify(ctx, "The passenger got in!", "info")
 		pushState(ctx, api)
 		return
 	end
@@ -93,11 +94,11 @@ function Delivery.Update(ctx: any, api: any, _dt: number)
 	data.Earned += pay
 	data.Done += 1
 	data.Wrecks = 0
-	api.Notify(ctx, ("Levererat! +%d kr"):format(pay), "money")
+	api.Notify(ctx, Locale.Msg("Delivered! +%d kr", pay), "money")
 
 	if data.Done >= D.Count then
-		api.Finish(ctx, ctx.Def.Name .. " klart!", {
-			("Klara: %d/%d"):format(data.Done, D.Count),
+		api.Finish(ctx, Locale.Msg("%s complete!", Locale.Msg(ctx.Def.Name)), {
+			Locale.Msg("Done: %d/%d", data.Done, D.Count),
 		}, data.Earned)
 		return
 	end
@@ -112,8 +113,8 @@ end
 
 function Delivery.OnWreck(ctx: any, api: any)
 	ctx.Data.Wrecks += 1
-	local message = if ctx.Def.Variant == "Taxi" then "Passageraren blev rädd! −%d kr dricks" else "Pizzan blev mosad! −%d kr"
-	api.Notify(ctx, message:format(D.WreckPenalty), "wreck")
+	local message = if ctx.Def.Variant == "Taxi" then "The passenger got scared! −%d kr tip" else "The pizza got squashed! −%d kr"
+	api.Notify(ctx, Locale.Msg(message, D.WreckPenalty), "wreck")
 end
 
 return Delivery

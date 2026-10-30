@@ -11,6 +11,7 @@ local RunService = game:GetService("RunService")
 
 local ActivityConfig = require(ReplicatedStorage.Shared.Config.ActivityConfig)
 local MapData = require(ReplicatedStorage.Shared.Map.MapData)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Geometry = require(script.Parent.Parent.Map.Geometry)
 local PlayerMode = require(script.Parent.Parent.Util.PlayerMode)
@@ -81,7 +82,8 @@ function api.MarkerCFrame(id: string): CFrame?
 	return if point then RespawnService.PointCFrame(point) else CFrame.new(position + Vector3.new(0, 4, 0))
 end
 
-function api.Notify(ctx: Context, text: string, kind: string?)
+-- Text till spelaren: engelsk sträng eller Locale.Msg (översätts på klienten).
+function api.Notify(ctx: Context, text: Locale.Message, kind: string?)
 	remotes.Notify:FireClient(ctx.Player, text, kind or "info")
 end
 
@@ -95,7 +97,7 @@ function api.SetState(ctx: Context, fields: { [string]: any })
 	remotes.ActivityState:FireClient(ctx.Player, ctx.State)
 end
 
-function api.Finish(ctx: Context, title: string, lines: { string }, reward: number)
+function api.Finish(ctx: Context, title: Locale.Message, lines: { Locale.Message }, reward: number)
 	if ctx.Ended then
 		return
 	end
@@ -118,7 +120,7 @@ endActivity = function(ctx: Context, result: { [string]: any }?)
 	if ctx.Player.Parent ~= Players then
 		return
 	end
-	local payload = result or { Title = "Avbrutet", Lines = {}, Reward = 0, Activity = ctx.Def.Name }
+	local payload = result or { Title = "Cancelled", Lines = {}, Reward = 0, Activity = ctx.Def.Name }
 	if payload.Reward > 0 then
 		EconomyService.AddMoney(ctx.Player, payload.Reward, ctx.Def.Name)
 	end
@@ -200,6 +202,7 @@ local function buildMarker(def: ActivityConfig.Activity, position: Vector3)
 	label.TextStrokeTransparency = 0.2
 	label.Text = def.Name
 	label.Parent = billboard
+	Geometry.Localize(label)
 
 	if def.Ramp then
 		local ramp = def.Ramp

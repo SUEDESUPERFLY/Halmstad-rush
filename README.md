@@ -65,6 +65,7 @@ I Studio: *View → Toolbox → Audio*, sök t.ex. `car engine loop`. Välj ett 
 ### 6. Testa innan du släpper
 - **Flera spelare:** *Test → Clients and Servers* → 2–3 spelare → *Start*. Prova race, kull och att spelarna är spöken mot varandra i fri körning.
 - **Mobil i Studio:** *Test → Device* → välj en telefon.
+- **Språk:** spelet visar svenska för den som har svenska som språk i Roblox, annars engelska. Testa båda i Studio: *Test → Player Emulator* → kryssa i *Enable Test Profile* → *Locale*: `Swedish (sv-se)` eller `English (en-us)` → Play.
 - **Riktig telefon:** efter publicering, starta spelet i Roblox-appen (Playability måste vara *Private* med dig som ägare, eller *Public*).
 - **Sparning:** starta, tjäna lite kronor, avsluta och starta igen. Pengarna ska vara kvar (bara efter steg 1 och 2).
 

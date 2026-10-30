@@ -5,6 +5,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ActivityConfig = require(ReplicatedStorage.Shared.Config.ActivityConfig)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local MapData = require(ReplicatedStorage.Shared.Map.MapData)
 
 local S = ActivityConfig.StuntJump
@@ -34,13 +35,13 @@ end
 local function medal(def: any, best: number): (string, number)
 	local medals, rewards = def.Medals, def.Rewards
 	if best >= medals[3] then
-		return "GULD", rewards[3]
+		return "GOLD", rewards[3]
 	elseif best >= medals[2] then
 		return "SILVER", rewards[2]
 	elseif best >= medals[1] then
-		return "BRONS", rewards[1]
+		return "BRONZE", rewards[1]
 	end
-	return "Ingen medalj", 0
+	return "No medal", 0
 end
 
 local function pushState(ctx: any, api: any)
@@ -48,10 +49,10 @@ local function pushState(ctx: any, api: any)
 	local top = rampFrame(ctx.Def)
 	local medals = ctx.Def.Medals
 	api.SetState(ctx, {
-		Title = ("%s · försök %d/%d"):format(ctx.Def.Name, math.min(data.Attempts + 1, S.Attempts), S.Attempts),
-		Objective = ("Brons %d m · Silver %d m · Guld %d m"):format(meters(medals[1]), meters(medals[2]), meters(medals[3])),
+		Title = Locale.Msg("%s · try %d/%d", Locale.Msg(ctx.Def.Name), math.min(data.Attempts + 1, S.Attempts), S.Attempts),
+		Objective = Locale.Msg("Bronze %d m · Silver %d m · Gold %d m", meters(medals[1]), meters(medals[2]), meters(medals[3])),
 		EndsAt = data.EndsAt,
-		Score = ("Bästa: %d m"):format(meters(data.Best)),
+		Score = Locale.Msg("Best: %d m", meters(data.Best)),
 		Target = top,
 		TargetLabel = "RAMP",
 	})
@@ -59,7 +60,7 @@ end
 
 local function finish(ctx: any, api: any)
 	local name, reward = medal(ctx.Def, ctx.Data.Best)
-	api.Finish(ctx, name, { ("Längsta hoppet: %d m"):format(meters(ctx.Data.Best)) }, reward)
+	api.Finish(ctx, name, { Locale.Msg("Longest jump: %d m", meters(ctx.Data.Best)) }, reward)
 end
 
 function StuntJump.Start(ctx: any, api: any): boolean
@@ -109,7 +110,7 @@ function StuntJump.Update(ctx: any, api: any, _dt: number)
 		local distance = (flat - data.Takeoff).Magnitude
 		data.Attempts += 1
 		data.Best = math.max(data.Best, distance)
-		api.Notify(ctx, ("Hopp: %d m"):format(meters(distance)), "air")
+		api.Notify(ctx, Locale.Msg("Jump: %d m", meters(distance)), "air")
 		if data.Attempts >= S.Attempts then
 			finish(ctx, api)
 			return

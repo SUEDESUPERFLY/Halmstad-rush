@@ -15,6 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local ShopConfig = require(ReplicatedStorage.Shared.Config.ShopConfig)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local DataService = require(script.Parent.DataService)
 local EconomyService = require(script.Parent.EconomyService)
@@ -90,9 +91,9 @@ local function grantProduct(player: Player, key: string)
 		if car and car.PrimaryPart then
 			remotes.Celebrate:FireAllClients(car.PrimaryPart.Position)
 		end
-		remotes.Notify:FireClient(player, "Konfetti! 🎉", "money")
+		remotes.Notify:FireClient(player, "Confetti! 🎉", "money")
 	elseif key == "Support" then
-		remotes.Notify:FireClient(player, "Tack för stödet! ❤", "money")
+		remotes.Notify:FireClient(player, "Thanks for the support! ❤", "money")
 	end
 end
 
@@ -133,7 +134,7 @@ end
 local function claimDaily(player: Player)
 	local status = dailyStatus(player)
 	if not status.Available then
-		remotes.Notify:FireClient(player, "Du har redan hämtat dagens belöning", "info")
+		remotes.Notify:FireClient(player, "You have already collected today's reward", "info")
 		return
 	end
 	local streak = status.Streak + 1
@@ -143,7 +144,7 @@ local function claimDaily(player: Player)
 		data.Daily.Streak = streak
 	end)
 	if ok then
-		EconomyService.AddMoney(player, reward, ("Dagens belöning (dag %d i rad)"):format(streak))
+		EconomyService.AddMoney(player, reward, Locale.Msg("Daily reward (day %d in a row)", streak))
 		sendState(player)
 	end
 end
@@ -187,7 +188,7 @@ function ShopService.Init()
 		for _, pass in ShopConfig.Passes do
 			if pass.Id == passId and pass.Id ~= 0 then
 				setPass(player, pass.Key, true)
-				remotes.Notify:FireClient(player, "Tack! " .. pass.Name .. " är din.", "money")
+				remotes.Notify:FireClient(player, Locale.Msg("Thanks! %s is yours.", Locale.Msg(pass.Name)), "money")
 			end
 		end
 	end)

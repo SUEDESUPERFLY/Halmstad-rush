@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+local Locale = require(game:GetService("ReplicatedStorage").Shared.Localization.Locale)
 local Remotes = require(game:GetService("ReplicatedStorage").Shared.Remotes)
 local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
 
@@ -109,7 +110,12 @@ local function build()
 	layout.Parent = popupHolder
 end
 
-local function showPopup(text: string, kind: string)
+-- `message` är engelsk text eller Locale.Msg, och översätts här.
+local function showPopup(message: unknown, kind: string)
+	local text = Locale.Resolve(message)
+	if text == "" then
+		return
+	end
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
 	local big = BIG_POPUPS[kind] == true
@@ -155,10 +161,8 @@ function HUD.Start()
 		gui.Enabled = false
 	end)
 	VehicleController.Popup:Connect(showPopup)
-	Remotes.Get("Notify").OnClientEvent:Connect(function(text: unknown, kind: unknown)
-		if typeof(text) == "string" then
-			showPopup(text, if typeof(kind) == "string" then kind else "info")
-		end
+	Remotes.Get("Notify").OnClientEvent:Connect(function(message: unknown, kind: unknown)
+		showPopup(message, if typeof(kind) == "string" then kind else "info")
 	end)
 
 	RunService.RenderStepped:Connect(function()

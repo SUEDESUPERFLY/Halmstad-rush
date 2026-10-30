@@ -66,7 +66,7 @@ function SoundController.Start()
 	VehicleController.Wrecked:Connect(function()
 		SoundController.Play(SoundConfig.Impact, 1, 0.5)
 	end)
-	VehicleController.Popup:Connect(function(_text: string, kind: string)
+	VehicleController.Popup:Connect(function(_message: unknown, kind: string)
 		if kind == "nearmiss" then
 			SoundController.Play(SoundConfig.Ping, 0.25, 1.6)
 		end

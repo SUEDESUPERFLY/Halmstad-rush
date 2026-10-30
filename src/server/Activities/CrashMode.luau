@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local ActivityConfig = require(ReplicatedStorage.Shared.Config.ActivityConfig)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Geometry = require(ServerScriptService.Server.Map.Geometry)
 
 local C = ActivityConfig.CrashMode
@@ -55,8 +56,8 @@ function CrashMode.BuildArena()
 		end
 	end
 	local sign = Geometry.Part(arena, "Sign", Vector3.new(40, 10, 1), CFrame.new(origin + Vector3.new(0, 16, 80)) * CFrame.Angles(0, math.pi, 0), Color3.fromRGB(200, 40, 40))
-	Geometry.Label(sign, Enum.NormalId.Front, "KROCKLÄGET", "Industrikorsningen", Color3.fromRGB(200, 40, 40))
-	Geometry.Label(sign, Enum.NormalId.Back, "KROCKLÄGET", "Industrikorsningen", Color3.fromRGB(200, 40, 40))
+	Geometry.Localize(Geometry.Label(sign, Enum.NormalId.Front, "CRASH MODE", "Industrial junction", Color3.fromRGB(200, 40, 40)))
+	Geometry.Localize(Geometry.Label(sign, Enum.NormalId.Back, "CRASH MODE", "Industrial junction", Color3.fromRGB(200, 40, 40)))
 end
 
 local function startCFrame(): CFrame
@@ -80,19 +81,19 @@ end
 local function pushState(ctx: any, api: any)
 	local data = ctx.Data
 	api.SetState(ctx, {
-		Title = "KROCKLÄGET",
-		Objective = if data.FirstImpact then "Orsaka mer skada!" else "Kör in i korsningen – full fart!",
+		Title = "CRASH MODE",
+		Objective = if data.FirstImpact then "Cause more damage!" else "Drive into the junction – full speed!",
 		EndsAt = data.EndsAt,
 		CountdownTo = data.StartAt,
-		Score = ("Skadevärde: %d kr"):format(data.Score),
+		Score = Locale.Msg("Damage: %d kr", data.Score),
 		Target = C.Origin,
-		TargetLabel = "KORSNINGEN",
+		TargetLabel = "JUNCTION",
 	})
 end
 
 function CrashMode.Start(ctx: any, api: any): boolean
 	if busyBy and busyBy.Parent then
-		api.Notify(ctx, "Korsningen är upptagen – försök igen snart", "info")
+		api.Notify(ctx, "The junction is busy – try again soon", "info")
 		return false
 	end
 	busyBy = ctx.Player
@@ -137,7 +138,7 @@ function CrashMode.OnNpcEvent(ctx: any, api: any, npc: any, event: string, _stre
 		data.Wrecks += 1
 		local multiplier = 1 + (data.Wrecks - 1) * C.ChainBonus
 		data.Score += math.floor(C.WreckScore * multiplier)
-		api.Notify(ctx, ("KVADDAD! x%.2f"):format(multiplier), "takedown")
+		api.Notify(ctx, Locale.Msg("WRECKED! x%.2f", multiplier), "takedown")
 	elseif event == "Impact" then
 		local count = data.ImpactsByNpc[npc] or 0
 		if count < 3 then
@@ -154,9 +155,9 @@ function CrashMode.Update(ctx: any, api: any, _dt: number)
 	local afterImpact = data.FirstImpact and now - data.FirstImpact > C.AfterFirstImpact
 	if now > data.EndsAt or afterImpact then
 		local reward = math.min(C.MaxReward, math.floor(data.Score / C.ScorePerKrona))
-		api.Finish(ctx, "KROCKLÄGET", {
-			("Skadevärde: %d kr"):format(data.Score),
-			("Kvaddade bilar: %d"):format(data.Wrecks),
+		api.Finish(ctx, "CRASH MODE", {
+			Locale.Msg("Damage: %d kr", data.Score),
+			Locale.Msg("Wrecked cars: %d", data.Wrecks),
 		}, reward)
 	end
 end

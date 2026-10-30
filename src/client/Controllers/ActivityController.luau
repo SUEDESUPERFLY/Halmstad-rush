@@ -6,6 +6,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Signal = require(ReplicatedStorage.Shared.Util.Signal)
 local VehicleController = require(script.Parent.VehicleController)
@@ -91,8 +92,8 @@ function ActivityController.Start()
 	leaveRemote = Remotes.Get("LeaveActivity")
 
 	Remotes.Get("ActivityInvite").OnClientEvent:Connect(function(id: unknown, name: unknown, description: unknown)
-		if state == nil and typeof(id) == "string" and typeof(name) == "string" then
-			ActivityController.Invited:Fire(id, name, if typeof(description) == "string" then description else "")
+		if state == nil and typeof(id) == "string" then
+			ActivityController.Invited:Fire(id, Locale.Resolve(name), Locale.Resolve(description))
 		end
 	end)
 
@@ -102,7 +103,7 @@ function ActivityController.Start()
 		end
 		state = data
 		if typeof(data.Target) == "Vector3" then
-			placeBeacon(data.Target, if typeof(data.TargetLabel) == "string" then data.TargetLabel else "MÅL")
+			placeBeacon(data.Target, Locale.Resolve(if data.TargetLabel ~= nil then data.TargetLabel else "GOAL"))
 		else
 			clearBeacon()
 		end

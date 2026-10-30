@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local CarCatalog = require(ReplicatedStorage.Shared.Config.CarCatalog)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local DataService = require(script.Parent.DataService)
 local EconomyService = require(script.Parent.EconomyService)
@@ -22,8 +23,8 @@ local lastAction: { [Player]: number } = {}
 local notifyRemote: RemoteEvent
 local profileRemote: RemoteEvent
 
-local function notify(player: Player, text: string, kind: string?)
-	notifyRemote:FireClient(player, text, kind or "info")
+local function notify(player: Player, message: Locale.Message, kind: string?)
+	notifyRemote:FireClient(player, message, kind or "info")
 end
 
 -- Det klienten behöver för garagemenyn (bara en kopia, inget som klienten kan ändra).
@@ -38,18 +39,18 @@ end
 
 local function buy(player: Player, data: DataService.PlayerData, car: CarCatalog.Car)
 	if data.OwnedCars[car.Id] then
-		notify(player, "You already own " .. car.Name)
+		notify(player, Locale.Msg("You already own %s", car.Name))
 		return
 	end
 	if not EconomyService.Spend(player, car.Price) then
-		notify(player, ("Not enough money (%d kr)"):format(car.Price))
+		notify(player, Locale.Msg("Not enough money (%d kr)", car.Price))
 		return
 	end
 	DataService.Update(player, function(profile)
 		profile.OwnedCars[car.Id] = { Upgrades = {}, Color = CarCatalog.DefaultColor }
 		profile.SelectedCar = car.Id
 	end)
-	notify(player, "Bought " .. car.Name .. "!", "money")
+	notify(player, Locale.Msg("Bought %s!", car.Name), "money")
 	VehicleService.RebuildCar(player)
 end
 
@@ -72,18 +73,18 @@ local function upgrade(player: Player, data: DataService.PlayerData, car: CarCat
 	local level = owned.Upgrades[definition.Id] or 0
 	local cost = definition.Costs[level + 1]
 	if not cost then
-		notify(player, definition.Name .. " is already maxed")
+		notify(player, Locale.Msg("%s is already maxed", Locale.Msg(definition.Name)))
 		return
 	end
 	if not EconomyService.Spend(player, cost) then
-		notify(player, ("Not enough money (%d kr)"):format(cost))
+		notify(player, Locale.Msg("Not enough money (%d kr)", cost))
 		return
 	end
 	DataService.Update(player, function(profile)
 		local carData = profile.OwnedCars[car.Id]
 		carData.Upgrades[definition.Id] = level + 1
 	end)
-	notify(player, ("%s level %d!"):format(definition.Name, level + 1), "money")
+	notify(player, Locale.Msg("%s level %d!", Locale.Msg(definition.Name), level + 1), "money")
 	if data.SelectedCar == car.Id then
 		VehicleService.RefreshCar(player)
 	end
@@ -96,17 +97,17 @@ local function paint(player: Player, data: DataService.PlayerData, car: CarCatal
 		return
 	end
 	if color.Pass and player:GetAttribute("Pass_" .. color.Pass) ~= true then
-		notify(player, color.Name .. " kräver VIP-lack (finns i SHOP)")
+		notify(player, Locale.Msg("%s needs VIP Paint (in the SHOP)", Locale.Msg(color.Name)))
 		return
 	end
 	if not EconomyService.Spend(player, CarCatalog.PaintCost) then
-		notify(player, ("Not enough money (%d kr)"):format(CarCatalog.PaintCost))
+		notify(player, Locale.Msg("Not enough money (%d kr)", CarCatalog.PaintCost))
 		return
 	end
 	DataService.Update(player, function(profile)
 		profile.OwnedCars[car.Id].Color = color.Id
 	end)
-	notify(player, "Painted " .. color.Name, "money")
+	notify(player, Locale.Msg("Painted %s", Locale.Msg(color.Name)), "money")
 	if data.SelectedCar == car.Id then
 		VehicleService.RefreshCar(player)
 	end

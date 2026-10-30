@@ -1,6 +1,8 @@
 --!strict
 -- Byggstenar: lådor, plattor, remsor, ramper, cylindrar, klot och skylttext.
 
+local CollectionService = game:GetService("CollectionService")
+
 local Geometry = {}
 
 local MAX_PART_SIZE = 2000
@@ -235,6 +237,15 @@ function Geometry.RampTop(start: Vector3, yawDeg: number, length: number, angleD
 	local flatForward = CFrame.Angles(0, math.rad(yawDeg), 0).LookVector
 	local angle = math.rad(angleDeg)
 	return start + flatForward * length * math.cos(angle) + Vector3.yAxis * length * math.sin(angle)
+end
+
+-- Märker skyltar med engelsk text så att klienten översätter dem (LocaleController).
+function Geometry.Localize(root: Instance)
+	for _, instance in { root, table.unpack(root:GetDescendants()) } do
+		if instance:IsA("TextLabel") then
+			CollectionService:AddTag(instance, "Localize")
+		end
+	end
 end
 
 return Geometry

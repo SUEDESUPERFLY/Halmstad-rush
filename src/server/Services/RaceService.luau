@@ -14,6 +14,7 @@ local RunService = game:GetService("RunService")
 local MapData = require(ReplicatedStorage.Shared.Map.MapData)
 local RaceConfig = require(ReplicatedStorage.Shared.Config.RaceConfig)
 local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Geometry = require(script.Parent.Parent.Map.Geometry)
 local CrashService = require(script.Parent.CrashService)
@@ -458,7 +459,7 @@ local function onJoinRequested(player: Player, raceId: unknown)
 		Takedowns = 0,
 	})
 	local left = math.max(0, math.ceil(session.LobbyEndsAt - os.clock()))
-	remotes.Notify:FireClient(player, ("%s – start in %d s"):format(session.Race.Name, left), "info")
+	remotes.Notify:FireClient(player, Locale.Msg("%s – start in %d s", Locale.Msg(session.Race.Name), left), "info")
 end
 
 local function onLeaveRequested(player: Player)
@@ -533,8 +534,8 @@ local function buildStartMarker(session: Session)
 		Geometry.Obstacle(post)
 	end
 	local banner = Geometry.Part(marker, "Banner", Vector3.new(40, 4, 0.5), CFrame.lookAt(base + Vector3.new(0, 19, 0), base + Vector3.new(0, 19, 0) - direction) * CFrame.Angles(0, 0, 0), Color3.fromRGB(20, 20, 25))
-	Geometry.Label(banner, Enum.NormalId.Front, "START / MÅL", session.Race.Name, Color3.fromRGB(20, 20, 25))
-	Geometry.Label(banner, Enum.NormalId.Back, "START / MÅL", session.Race.Name, Color3.fromRGB(20, 20, 25))
+	Geometry.Localize(Geometry.Label(banner, Enum.NormalId.Front, "START / FINISH", session.Race.Name, Color3.fromRGB(20, 20, 25)))
+	Geometry.Localize(Geometry.Label(banner, Enum.NormalId.Back, "START / FINISH", session.Race.Name, Color3.fromRGB(20, 20, 25)))
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Size = UDim2.fromOffset(220, 60)

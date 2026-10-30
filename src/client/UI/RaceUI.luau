@@ -2,9 +2,11 @@
 -- Race-gränssnitt: startknapp vid startlinjen, nedräkning, racepanel och resultattavla.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local RaceController = require(script.Parent.Parent.Controllers.RaceController)
 
 local RaceUI = {}
@@ -98,7 +100,7 @@ local function build()
 	timeLabel = label(panel, "0:00.0", 18, UDim2.fromOffset(12, 62), UDim2.new(1, -24, 0, 22))
 
 	local leave = Instance.new("TextButton")
-	leave.Text = "LEAVE RACE"
+	leave.Text = Locale.T("LEAVE RACE")
 	leave.Font = Enum.Font.GothamBold
 	leave.TextSize = 14
 	leave.TextColor3 = Color3.new(1, 1, 1)
@@ -139,7 +141,7 @@ local function showResults(data: any)
 			child:Destroy()
 		end
 	end
-	local title = label(resultList, "RESULTAT · " .. tostring(data.RaceName or ""), 22, UDim2.new(), UDim2.new(1, 0, 0, 30))
+	local title = label(resultList, Locale.T("RESULTS · %s", Locale.T(tostring(data.RaceName or ""))), 22, UDim2.new(), UDim2.new(1, 0, 0, 30))
 	title.TextColor3 = Color3.fromRGB(255, 210, 60)
 	title.LayoutOrder = 0
 	local me = Players.LocalPlayer.UserId
@@ -185,9 +187,9 @@ function RaceUI.Start()
 	RaceController.Invited:Connect(function(raceId: string, raceName: string, lobbyOpen: boolean)
 		invitedRace = raceId
 		lastInvite = os.clock()
-		local action = if lobbyOpen then "JOIN RACE" else "START RACE"
+		local action = Locale.T(if lobbyOpen then "JOIN RACE" else "START RACE")
 		local key = if UserInputService.TouchEnabled then "" else " (E)"
-		prompt.Text = ("%s%s · %s"):format(action, key, raceName)
+		prompt.Text = ("%s%s · %s"):format(action, key, Locale.T(raceName))
 		prompt.Visible = true
 	end)
 	prompt.Activated:Connect(join)
@@ -238,7 +240,7 @@ function RaceUI.Start()
 			countdownLabel.Text = tostring(math.ceil(left))
 		elseif left > -1 then
 			countdownLabel.Visible = true
-			countdownLabel.Text = "GO!"
+			countdownLabel.Text = Locale.T("GO!")
 			raceStartedLocal = true
 		else
 			countdownLabel.Visible = false

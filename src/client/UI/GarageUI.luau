@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
 local CarCatalog = require(ReplicatedStorage.Shared.Config.CarCatalog)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local ActivityController = require(script.Parent.Parent.Controllers.ActivityController)
 local RaceController = require(script.Parent.Parent.Controllers.RaceController)
@@ -16,9 +17,9 @@ local VehicleController = require(script.Parent.Parent.Controllers.VehicleContro
 local GarageUI = {}
 
 local STAT_ROWS = {
-	{ Key = "TopSpeed", Label = "Fart", Min = 0.85, Max = 1.35 },
+	{ Key = "TopSpeed", Label = "Speed", Min = 0.85, Max = 1.35 },
 	{ Key = "Acceleration", Label = "Acceleration", Min = 0.85, Max = 1.45 },
-	{ Key = "Handling", Label = "Grepp", Min = 0.85, Max = 1.4 },
+	{ Key = "Handling", Label = "Grip", Min = 0.85, Max = 1.4 },
 	{ Key = "Boost", Label = "Boost", Min = 0.95, Max = 1.3 },
 }
 
@@ -120,7 +121,7 @@ local function renderList()
 	for index, car in CarCatalog.Cars do
 		local owned = profile and profile.OwnedCars[car.Id] ~= nil
 		local selected = profile and profile.SelectedCar == car.Id
-		local status = if selected then "  ✓ I bruk" elseif owned then "  Ägd" else ("  %d kr"):format(car.Price)
+		local status = if selected then "  ✓ " .. Locale.T("In use") elseif owned then "  " .. Locale.T("Owned") else ("  %d kr"):format(car.Price)
 		local b = button(carList, car.Name .. status, if car.Id == viewedCar then ACCENT else CARD, 40, function()
 			viewedCar = car.Id
 			refresh()
@@ -149,34 +150,35 @@ local function renderDetails()
 	end
 
 	text(details, car.Name, 26, 32, ACCENT).LayoutOrder = nextOrder()
-	text(details, car.Description, 14, 36, Color3.fromRGB(200, 200, 210)).LayoutOrder = nextOrder()
+	text(details, Locale.T(car.Description), 14, 36, Color3.fromRGB(200, 200, 210)).LayoutOrder = nextOrder()
 
 	local stats = CarCatalog.ComputeStats(car.Id, owned and owned.Upgrades)
 	for _, row in STAT_ROWS do
 		local value = (stats :: any)[row.Key]
-		statBar(details, row.Label, (value - row.Min) / (row.Max - row.Min), nextOrder())
+		statBar(details, Locale.T(row.Label), (value - row.Min) / (row.Max - row.Min), nextOrder())
 	end
 
 	if not owned then
 		local canAfford = profile.Money >= car.Price
-		button(details, ("KÖP · %d kr"):format(car.Price), if canAfford then ACCENT else Color3.fromRGB(110, 110, 120), 44, function()
+		button(details, Locale.T("BUY · %d kr", car.Price), if canAfford then ACCENT else Color3.fromRGB(110, 110, 120), 44, function()
 			send("Buy", car.Id)
 		end).LayoutOrder = nextOrder()
 		return
 	end
 
 	if profile.SelectedCar ~= car.Id then
-		button(details, "KÖR DENNA BIL", Color3.fromRGB(90, 210, 120), 44, function()
+		button(details, Locale.T("DRIVE THIS CAR"), Color3.fromRGB(90, 210, 120), 44, function()
 			send("Select", car.Id)
 		end).LayoutOrder = nextOrder()
 	end
 
-	text(details, "UPPGRADERINGAR", 16, 22, ACCENT).LayoutOrder = nextOrder()
+	text(details, Locale.T("UPGRADES"), 16, 22, ACCENT).LayoutOrder = nextOrder()
 	for _, upgrade in CarCatalog.Upgrades do
 		local level = owned.Upgrades[upgrade.Id] or 0
 		local cost = upgrade.Costs[level + 1]
 		local pips = string.rep("■", level) .. string.rep("□", #upgrade.Costs - level)
-		local label = if cost then ("%s  %s  · %d kr"):format(upgrade.Name, pips, cost) else ("%s  %s  · MAX"):format(upgrade.Name, pips)
+		local name = Locale.T(upgrade.Name)
+		local label = if cost then ("%s  %s  · %d kr"):format(name, pips, cost) else ("%s  %s  · MAX"):format(name, pips)
 		local b = button(details, label, if cost then Color3.fromRGB(120, 180, 255) else CARD, 36, function()
 			if cost then
 				send("Upgrade", car.Id, upgrade.Id)
@@ -188,7 +190,7 @@ local function renderDetails()
 		end
 	end
 
-	text(details, ("LACK · %d kr"):format(CarCatalog.PaintCost), 16, 22, ACCENT).LayoutOrder = nextOrder()
+	text(details, Locale.T("PAINT · %d kr", CarCatalog.PaintCost), 16, 22, ACCENT).LayoutOrder = nextOrder()
 	local swatches = Instance.new("Frame")
 	swatches.BackgroundTransparency = 1
 	swatches.Size = UDim2.new(1, 0, 0, 84)
@@ -228,7 +230,7 @@ refresh = function()
 	renderList()
 	renderDetails()
 	if profile then
-		footer.Text = ("Saldo: %d kr%s"):format(profile.Money, if profile.Persistent then "" else "   ·   Sparas inte i det här testet")
+		footer.Text = Locale.T("Balance: %d kr", profile.Money) .. (if profile.Persistent then "" else "   ·   " .. Locale.T("Not saved in this test"))
 	end
 end
 

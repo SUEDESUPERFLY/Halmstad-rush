@@ -15,6 +15,7 @@ local modules = {
 	Controllers:WaitForChild("ActivityController"),
 	Controllers:WaitForChild("SoundController"),
 	Controllers:WaitForChild("SpinnerController"),
+	Controllers:WaitForChild("LocaleController"),
 	UI:WaitForChild("HUD"),
 	UI:WaitForChild("TouchControls"),
 	UI:WaitForChild("DistrictBanner"),

@@ -5,6 +5,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ActivityConfig = require(ReplicatedStorage.Shared.Config.ActivityConfig)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 
 local Settings = ActivityConfig.Drift
 
@@ -13,22 +14,22 @@ local Drift = {}
 local function medal(def: any, score: number): (string, number)
 	local medals, rewards = def.Medals, def.Rewards
 	if score >= medals[3] then
-		return "GULD", rewards[3]
+		return "GOLD", rewards[3]
 	elseif score >= medals[2] then
 		return "SILVER", rewards[2]
 	elseif score >= medals[1] then
-		return "BRONS", rewards[1]
+		return "BRONZE", rewards[1]
 	end
-	return "Ingen medalj", 0
+	return "No medal", 0
 end
 
 local function pushState(ctx: any, api: any)
 	local medals = ctx.Def.Medals
 	api.SetState(ctx, {
 		Title = ctx.Def.Name,
-		Objective = ("Brons %d · Silver %d · Guld %d"):format(medals[1], medals[2], medals[3]),
+		Objective = Locale.Msg("Bronze %d · Silver %d · Gold %d", medals[1], medals[2], medals[3]),
 		EndsAt = ctx.Data.EndsAt,
-		Score = ("Driftpoäng: %d"):format(math.floor(ctx.Data.Score)),
+		Score = Locale.Msg("Drift points: %d", math.floor(ctx.Data.Score)),
 	})
 end
 
@@ -44,7 +45,7 @@ function Drift.Update(ctx: any, api: any, dt: number)
 	local data = ctx.Data
 	if api.ServerNow() > data.EndsAt then
 		local name, reward = medal(ctx.Def, data.Score)
-		api.Finish(ctx, name, { ("Driftpoäng: %d"):format(math.floor(data.Score)) }, reward)
+		api.Finish(ctx, name, { Locale.Msg("Drift points: %d", math.floor(data.Score)) }, reward)
 		return
 	end
 	local root = api.GetCarRoot(ctx.Player)
@@ -65,7 +66,7 @@ end
 function Drift.OnWreck(ctx: any, api: any)
 	-- En krock nollställer inte poängen men kostar en bit
 	ctx.Data.Score = math.max(0, ctx.Data.Score - 300)
-	api.Notify(ctx, "Krock! −300 driftpoäng", "wreck")
+	api.Notify(ctx, "Crash! −300 drift points", "wreck")
 end
 
 return Drift

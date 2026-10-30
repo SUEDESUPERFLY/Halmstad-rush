@@ -16,6 +16,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local CarCatalog = require(ReplicatedStorage.Shared.Config.CarCatalog)
 local DataConfig = require(ReplicatedStorage.Shared.Config.DataConfig)
+local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Signal = require(ReplicatedStorage.Shared.Util.Signal)
 
@@ -233,7 +234,7 @@ local function load(player: Player)
 		task.wait(DataConfig.LockWaitDelay)
 	end
 
-	player:Kick("Your progress is still being saved on another server. Please rejoin in a minute.")
+	player:Kick(Locale.ForPlayer(player, "Your progress is still being saved on another server. Please rejoin in a minute."))
 end
 
 -- Väntar tills spelarens data är laddad. Returnerar nil om spelaren lämnade eller vid timeout.
