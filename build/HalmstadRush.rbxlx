@@ -474,18 +474,32 @@ end
 
 return ShopConfig
 ]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000009"><Properties><string name="Name">SoundConfig</string><ProtectedString name="Source"><![CDATA[--!strict
--- Ljud. Standard är Robloxs inbyggda ljud (rbxasset://), som alltid finns och inte kräver
--- uppladdning. Ett riktigt motorljud kan läggas in som ett ljud-ID från Creator Store
--- (Studio: Toolbox → Audio, sök "car engine loop", högerklicka → Copy Asset ID) i EngineId.
+-- Ljud. Korta effekter är Robloxs inbyggda ljud (rbxasset://). Motor och musik är spelets
+-- egna filer (assets/audio/, skapade av tools/audio/make_audio.py) som laddas upp på
+-- create.roblox.com. Tomt ID = ljudet spelas inte.
 
 local SoundConfig = {}
 
-SoundConfig.EngineId = "" -- t.ex. "rbxassetid://1234567890"; tomt = inget motorljud
-SoundConfig.EngineVolume = 0.5
-SoundConfig.EnginePitch = { Min = 0.7, Max = 1.8 }
+-- Motor (egen bil): tonhöjden följer ett låtsasvarvtal med växlar
+SoundConfig.EngineId = "" -- t.ex. "rbxassetid://1234567890" (assets/audio/engine_loop.ogg)
+SoundConfig.EngineVolume = 0.45
+SoundConfig.EnginePitch = { Min = 0.75, Max = 2.1 } -- tomgång och högsta varv
+SoundConfig.EngineGears = 5
+SoundConfig.EngineIdleRpm = 0.12 -- 0..1
+SoundConfig.EngineRevSpeed = 6 -- hur snabbt varvet följer gasen
+SoundConfig.EngineBoostRpm = 0.12 -- extra varv under boost
+
+-- Motorljud från andra bilar (spelare och trafik), 3D-ljud som hörs nära
+SoundConfig.OtherEngineVolume = 0.3
+SoundConfig.OtherEngineMaxDistance = 140
+SoundConfig.OtherEngineLimit = 8 -- bara de närmaste bilarna låter
+
+-- Bakgrundsmusik: spelas i tur och ordning och börjar om. Av/på med U eller ♪-knappen.
+SoundConfig.MusicIds = {} :: { string } -- t.ex. { "rbxassetid://1234567890" } (assets/audio/music_loop.ogg)
+SoundConfig.MusicVolume = 0.25
 
 SoundConfig.Wind = "rbxasset://sounds/action_falling.mp3" -- fartvind, stiger med farten
-SoundConfig.WindVolume = 0.45
+SoundConfig.WindVolume = 0.35
 SoundConfig.WindPitch = { Min = 0.6, Max = 1.4 }
 
 SoundConfig.Impact = "rbxasset://sounds/action_jump_land.mp3" -- duns vid krock
@@ -816,6 +830,7 @@ return {
 	["MAP (M)"] = "KARTA (M)",
 	["Midnight"] = "Midnatt",
 	["Minimap on/off"] = "Minikarta av/på",
+	["Music on/off"] = "Musik av/på",
 	["Navy"] = "Marinblå",
 	["NEAR MISS!"] = "NÄRA ÖGAT!",
 	["Neon green"] = "Neongrön",
@@ -7849,6 +7864,7 @@ return PlayerMode
 -- Chassit är den enda kroppen med massa; allt annat är Massless och svetsat.
 -- Delar med attributet Paint = true lackeras med bilens färg (CarBuilder.Paint).
 
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
@@ -7986,6 +8002,7 @@ function CarBuilder.Build(bodyColor: Color3, ownerUserId: number, style: string?
 	model.Name = "Car_" .. ownerUserId
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
 	model:SetAttribute("IsHalmstadCar", true)
+	CollectionService:AddTag(model, "HalmstadCar") -- klienten ger bilen motorljud
 	model:SetAttribute("OwnerUserId", ownerUserId)
 
 	local size = Geometry.ChassisSize
@@ -9014,31 +9031,49 @@ end
 
 return RaceController
 ]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000045"><Properties><string name="Name">SoundController</string><ProtectedString name="Source"><![CDATA[--!strict
--- Ljud för den egna bilen och spelhändelser (bara lokalt):
--- fartvind (och motor om ett ID finns i SoundConfig), dunsar vid krock, plask i vattnet
--- och pling vid kontrollpunkter, pengar, takedowns och nära ögat.
+-- Ljud, bara lokalt:
+--  * egen bil: motor med låtsasväxlar (om SoundConfig.EngineId finns) och fartvind
+--  * andra bilar (spelare och trafik): 3D-motorljud för de närmaste
+--  * bakgrundsmusik (SoundConfig.MusicIds), av/på med U eller ♪-knappen
+--  * dunsar vid krock, plask i vattnet och pling vid kontrollpunkter, pengar, takedowns och nära ögat
 
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local UserInputService = game:GetService("UserInputService")
 
 local SoundConfig = require(ReplicatedStorage.Shared.Config.SoundConfig)
 local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Signal = require(ReplicatedStorage.Shared.Util.Signal)
+local InputController = require(script.Parent.InputController)
 local VehicleController = require(script.Parent.VehicleController)
 
 local SoundController = {}
 
+SoundController.MusicChanged = Signal.new() -- (enabled: boolean)
+
+local T = VehicleConfig.Tuning
+local CAR_TAG = "HalmstadCar"
+
 local holder: Folder
 local wind: Sound
 local engine: Sound?
+local rpm = SoundConfig.EngineIdleRpm
 
-local function makeSound(id: string, volume: number, looped: boolean): Sound
+local music: Sound?
+local musicIndex = 1
+local musicEnabled = true
+
+local otherEngines: { [Model]: Sound } = {}
+
+local function makeSound(id: string, volume: number, looped: boolean, parent: Instance?): Sound
 	local sound = Instance.new("Sound")
 	sound.SoundId = id
 	sound.Volume = volume * SoundConfig.MasterVolume
 	sound.Looped = looped
-	sound.Parent = holder
+	sound.Parent = parent or holder
 	return sound
 end
 
@@ -9050,6 +9085,105 @@ function SoundController.Play(id: string, volume: number?, pitch: number?)
 	sound.Ended:Once(function()
 		sound:Destroy()
 	end)
+end
+
+-- Varvtal 0..1 från farten (andel av toppfarten), med växlar: varvet stiger genom
+-- varje växel och sjunker vid uppväxling.
+local function gearRpm(ratio: number): number
+	local gears = SoundConfig.EngineGears
+	local position = math.clamp(ratio, 0, 1) * gears
+	local gear = math.min(math.floor(position), gears - 1)
+	local within = position - gear
+	local low = if gear == 0 then SoundConfig.EngineIdleRpm else 0.45
+	return low + (1 - low) * within
+end
+
+local function pitchFor(value: number): number
+	local pitch = SoundConfig.EnginePitch
+	return pitch.Min + (pitch.Max - pitch.Min) * value
+end
+
+-- Musik ---------------------------------------------------------------------
+
+local function playTrack()
+	local ids = SoundConfig.MusicIds
+	if #ids == 0 or not musicEnabled then
+		return
+	end
+	if music then
+		music:Destroy()
+	end
+	local track = makeSound(ids[musicIndex], SoundConfig.MusicVolume, #ids == 1)
+	track.Name = "Music"
+	music = track
+	track.Ended:Connect(function()
+		musicIndex = musicIndex % #ids + 1
+		playTrack()
+	end)
+	track:Play()
+end
+
+function SoundController.HasMusic(): boolean
+	return #SoundConfig.MusicIds > 0
+end
+
+function SoundController.IsMusicEnabled(): boolean
+	return musicEnabled
+end
+
+function SoundController.SetMusicEnabled(enabled: boolean)
+	musicEnabled = enabled
+	if enabled then
+		playTrack()
+	elseif music then
+		music:Destroy()
+		music = nil
+	end
+	SoundController.MusicChanged:Fire(enabled)
+end
+
+-- Andra bilars motorer -------------------------------------------------------
+
+local function updateOtherEngines()
+	local camera = workspace.CurrentCamera
+	if SoundConfig.EngineId == "" or not camera then
+		return
+	end
+	local own = VehicleController.GetCar()
+	local listener = camera.CFrame.Position
+	local nearby: { { Model: Model, Distance: number } } = {}
+	for _, instance in CollectionService:GetTagged(CAR_TAG) do
+		local model = instance :: Model
+		local root = model.PrimaryPart
+		if model ~= own and root then
+			local distance = (root.Position - listener).Magnitude
+			if distance < SoundConfig.OtherEngineMaxDistance then
+				table.insert(nearby, { Model = model, Distance = distance })
+			end
+		end
+	end
+	table.sort(nearby, function(a, b)
+		return a.Distance < b.Distance
+	end)
+	local keep: { [Model]: boolean } = {}
+	for i = 1, math.min(#nearby, SoundConfig.OtherEngineLimit) do
+		local model = nearby[i].Model
+		keep[model] = true
+		if not otherEngines[model] then
+			local sound = makeSound(SoundConfig.EngineId, SoundConfig.OtherEngineVolume, true, model.PrimaryPart)
+			sound.RollOffMode = Enum.RollOffMode.InverseTapered
+			sound.RollOffMinDistance = 12
+			sound.RollOffMaxDistance = SoundConfig.OtherEngineMaxDistance
+			sound:Play()
+			otherEngines[model] = sound
+		end
+	end
+	for model, sound in otherEngines do
+		if not keep[model] or not model.Parent then
+			sound:Destroy()
+			otherEngines[model] = nil
+		end
+	end
 end
 
 function SoundController.Start()
@@ -9064,6 +9198,7 @@ function SoundController.Start()
 
 	VehicleController.Entered:Connect(function()
 		wind:Play()
+		rpm = SoundConfig.EngineIdleRpm
 		if engine then
 			engine:Play()
 		end
@@ -9101,19 +9236,61 @@ function SoundController.Start()
 		SoundController.Play(SoundConfig.Ping, 0.5, 1)
 	end)
 
-	local T = VehicleConfig.Tuning
-	RunService.RenderStepped:Connect(function()
-		if not VehicleController.GetCar() then
+	-- Musik
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if not gameProcessed and input.KeyCode == Enum.KeyCode.U and SoundController.HasMusic() then
+			SoundController.SetMusicEnabled(not musicEnabled)
+		end
+	end)
+	playTrack()
+
+	-- Andra bilar: välj de närmaste några gånger i sekunden
+	task.spawn(function()
+		while true do
+			task.wait(0.25)
+			updateOtherEngines()
+		end
+	end)
+
+	RunService.RenderStepped:Connect(function(dt)
+		-- Andra bilars tonhöjd följer deras fart
+		for model, sound in otherEngines do
+			local root = model.PrimaryPart
+			if root then
+				local ratio = (root.AssemblyLinearVelocity * Vector3.new(1, 0, 1)).Magnitude / T.MaxSpeed
+				sound.PlaybackSpeed = pitchFor(gearRpm(ratio))
+			end
+		end
+
+		local car = VehicleController.GetCar()
+		if not car then
 			return
 		end
 		local state = VehicleController.GetState()
-		local ratio = math.clamp(math.abs(state.Speed) / T.BoostMaxSpeed, 0, 1)
-		wind.Volume = SoundConfig.WindVolume * ratio * ratio * SoundConfig.MasterVolume
-		wind.PlaybackSpeed = SoundConfig.WindPitch.Min + (SoundConfig.WindPitch.Max - SoundConfig.WindPitch.Min) * ratio
+		local topSpeed = T.MaxSpeed * (tonumber(car:GetAttribute("TopSpeedMul")) or 1)
+		local speedRatio = math.abs(state.Speed) / topSpeed
+
+		local windRatio = math.clamp(math.abs(state.Speed) / T.BoostMaxSpeed, 0, 1)
+		wind.Volume = SoundConfig.WindVolume * windRatio * windRatio * SoundConfig.MasterVolume
+		wind.PlaybackSpeed = SoundConfig.WindPitch.Min + (SoundConfig.WindPitch.Max - SoundConfig.WindPitch.Min) * windRatio
+
 		local currentEngine = engine
 		if currentEngine then
-			local pitch = SoundConfig.EnginePitch
-			currentEngine.PlaybackSpeed = pitch.Min + (pitch.Max - pitch.Min) * ratio + (if state.Boosting then 0.15 else 0)
+			local throttle = math.abs(InputController.GetDriveInput().Throttle)
+			local target
+			if state.Wrecked then
+				target = SoundConfig.EngineIdleRpm
+			elseif state.Airborne then
+				target = SoundConfig.EngineIdleRpm + throttle * 0.8 -- frivarv i luften
+			else
+				target = gearRpm(speedRatio) + (if throttle > 0.1 then 0.06 else -0.04)
+			end
+			if state.Boosting then
+				target += SoundConfig.EngineBoostRpm
+			end
+			rpm += (math.clamp(target, 0, 1.15) - rpm) * math.min(1, dt * SoundConfig.EngineRevSpeed)
+			currentEngine.PlaybackSpeed = pitchFor(rpm)
+			currentEngine.Volume = SoundConfig.EngineVolume * (0.6 + 0.4 * throttle) * SoundConfig.MasterVolume
 		end
 	end)
 end
@@ -10583,6 +10760,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
 local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
+local SoundController = require(script.Parent.Parent.Controllers.SoundController)
 
 local HelpUI = {}
 
@@ -10601,6 +10779,7 @@ local ROWS = {
 	{ "Garage", "G", "–", "GARAGE" },
 	{ "Shop", "B", "–", "SHOP" },
 	{ "Minimap on/off", "N", "–", "–" },
+	{ "Music on/off", "U", "–", "♪" },
 	{ "This help", "H", "–", "?" },
 }
 
@@ -10656,6 +10835,22 @@ function HelpUI.Start()
 	toggle.Activated:Connect(function()
 		setOpen(not window.Visible)
 	end)
+
+	-- Musik av/på (visas bara när det finns musik i SoundConfig)
+	if SoundController.HasMusic() then
+		local musicButton = toggle:Clone()
+		musicButton.Position = UDim2.fromOffset(438, 70)
+		musicButton.Parent = gui
+		local function refreshMusic(enabled: boolean)
+			musicButton.Text = "♪"
+			musicButton.TextTransparency = if enabled then 0 else 0.6
+		end
+		refreshMusic(SoundController.IsMusicEnabled())
+		SoundController.MusicChanged:Connect(refreshMusic)
+		musicButton.Activated:Connect(function()
+			SoundController.SetMusicEnabled(not SoundController.IsMusicEnabled())
+		end)
+	end
 
 	window = Instance.new("Frame")
 	window.AnchorPoint = Vector2.new(0.5, 0.5)

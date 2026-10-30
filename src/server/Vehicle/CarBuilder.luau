@@ -6,6 +6,7 @@
 -- Chassit är den enda kroppen med massa; allt annat är Massless och svetsat.
 -- Delar med attributet Paint = true lackeras med bilens färg (CarBuilder.Paint).
 
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
@@ -143,6 +144,7 @@ function CarBuilder.Build(bodyColor: Color3, ownerUserId: number, style: string?
 	model.Name = "Car_" .. ownerUserId
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
 	model:SetAttribute("IsHalmstadCar", true)
+	CollectionService:AddTag(model, "HalmstadCar") -- klienten ger bilen motorljud
 	model:SetAttribute("OwnerUserId", ownerUserId)
 
 	local size = Geometry.ChassisSize

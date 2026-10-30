@@ -92,6 +92,7 @@ return {
 	["MAP (M)"] = "KARTA (M)",
 	["Midnight"] = "Midnatt",
 	["Minimap on/off"] = "Minikarta av/på",
+	["Music on/off"] = "Musik av/på",
 	["Navy"] = "Marinblå",
 	["NEAR MISS!"] = "NÄRA ÖGAT!",
 	["Neon green"] = "Neongrön",

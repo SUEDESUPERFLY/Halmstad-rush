@@ -179,7 +179,10 @@ build/      -> byggd placefil (committas)
   - plask vid "SPLASH!"
   - pling vid pengar, kontrollpunkter, takedowns och nära ögat.
 
-  Ett motorljud kan läggas in som ljud-ID i `SoundConfig.EngineId`.
+- **Motor och musik (egna ljud):** `tools/audio/make_audio.py` syntetiserar `assets/audio/engine_loop.ogg` (2 s, sömlös) och `assets/audio/music_loop.ogg` (cirka 69 s, 112 BPM, a-moll, sömlös). Inga licensfrågor. Användaren laddar upp filerna på create.roblox.com och ID:na skrivs in i `SoundConfig.EngineId` och `SoundConfig.MusicIds`. Tomt ID = inget ljud.
+  - Egen bil: varvtal med låtsasväxlar (`EngineGears`), stiger med gas, frivarv i luften, extra varv vid boost. Tonhöjd `EnginePitch`.
+  - Andra bilar (taggen `HalmstadCar`, sätts i `CarBuilder.Build`): 3D-motorljud för de `OtherEngineLimit` närmaste inom `OtherEngineMaxDistance`.
+  - Musiken spelas i tur och ordning och börjar om. U eller ♪-knappen (visas bara om det finns musik) slår av och på.
 - **Minikartan (`MinimapUI`)** har norr uppåt och visas uppe till vänster. N döljer och visar den.
   - Data: `src/shared/Map/MinimapData.luau`, genererad av `tools/map/build_minimap.py` från `CityGrid`. Den består av rektanglar (gata, huvudgata, vatten) på 24 studs, cirka 2 200 GUI-rutor.
   - Havet och Tylösandsvägen ritas från `MapData`. Prickar visar aktiviteter, kull, racestart, andra spelare och aktuellt mål.
@@ -229,6 +232,7 @@ build/      -> byggd placefil (committas)
 | Starta aktivitet (vid markören) | E | B | knappen STARTA |
 | Butik | B | – | SHOP-knappen |
 | Minikarta av/på | N | – | – |
+| Musik av/på | U | – | ♪-knappen |
 | Hjälp (kontroller) | H | – | ?-knappen |
 
 ## Beslut
@@ -258,7 +262,7 @@ build/      -> byggd placefil (committas)
 - Lint i molnmiljön: `stylua --syntax luau --check` (syntax) och `selene src` (`selene.toml`, egen std `roblox_min.yml` där Roblox-globaler bara deklareras). Ingen typkontroll (luau-lsp saknas), så typfel syns först i Studios Output-fönster. Verktygen installeras med `cargo install stylua selene` om de saknas.
 - Andra spelare ser inte hjulens fjädring och rotation.
 - Cirka 5 600 hus som Parts plus Terrain, med StreamingEnabled (fas 8). Testa på en riktig mobil innan publicering.
-- Inget motorljud förrän ett ljud-ID läggs in i `SoundConfig.EngineId`.
+- Inget motorljud eller musik förrän ljuden laddats upp och ID:na lagts in i `SoundConfig` (`EngineId`, `MusicIds`).
 - Alla game pass- och produkt-ID:n är inlagda i `ShopConfig`. Passen måste vara "Item for Sale" på roblox.com för att gå att köpa.
 - Krockdetekteringen kan ge falska WRECKED! vid hårda landningar i backar. Justera `Crash.WreckImpact` vid behov.
 - Vägmarkeringar finns bara längs huvudgatorna (rutterna). Mittlinjen följer ruttens linje, som kan ligga lite vid sidan av gatans mitt på breda gator.

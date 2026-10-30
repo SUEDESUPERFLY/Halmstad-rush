@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
 local Locale = require(ReplicatedStorage.Shared.Localization.Locale)
+local SoundController = require(script.Parent.Parent.Controllers.SoundController)
 
 local HelpUI = {}
 
@@ -24,6 +25,7 @@ local ROWS = {
 	{ "Garage", "G", "–", "GARAGE" },
 	{ "Shop", "B", "–", "SHOP" },
 	{ "Minimap on/off", "N", "–", "–" },
+	{ "Music on/off", "U", "–", "♪" },
 	{ "This help", "H", "–", "?" },
 }
 
@@ -79,6 +81,22 @@ function HelpUI.Start()
 	toggle.Activated:Connect(function()
 		setOpen(not window.Visible)
 	end)
+
+	-- Musik av/på (visas bara när det finns musik i SoundConfig)
+	if SoundController.HasMusic() then
+		local musicButton = toggle:Clone()
+		musicButton.Position = UDim2.fromOffset(438, 70)
+		musicButton.Parent = gui
+		local function refreshMusic(enabled: boolean)
+			musicButton.Text = "♪"
+			musicButton.TextTransparency = if enabled then 0 else 0.6
+		end
+		refreshMusic(SoundController.IsMusicEnabled())
+		SoundController.MusicChanged:Connect(refreshMusic)
+		musicButton.Activated:Connect(function()
+			SoundController.SetMusicEnabled(not SoundController.IsMusicEnabled())
+		end)
+	end
 
 	window = Instance.new("Frame")
 	window.AnchorPoint = Vector2.new(0.5, 0.5)

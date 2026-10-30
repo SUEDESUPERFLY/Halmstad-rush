@@ -59,8 +59,12 @@ create.roblox.com → ditt spel → *Monetization*:
 3. Kopiera **ID-numret** för varje pass och produkt (siffrorna i adressfältet eller via ⋯ → *Copy Asset ID*) och skicka dem till mig. Då läggs de in i `ShopConfig` och knapparna blir riktiga köp.
 Fram till dess visar butiken "Inte i butiken än", och i Studio finns "Testa (Studio)" för att prova effekterna gratis.
 
-### 5. Motorljud (valfritt)
-I Studio: *View → Toolbox → Audio*, sök t.ex. `car engine loop`. Välj ett ljud som går att använda fritt (*Roblox*-skapat är säkrast), högerklicka → *Copy Asset ID* och skicka siffrorna till mig.
+### 5. Motorljud och musik
+Spelet har egna, syntetiserade ljud i `assets/audio/` (inga licensproblem):
+1. Öppna `assets/audio/engine_loop.ogg` och `assets/audio/music_loop.ogg` på GitHub och klicka **Download raw file** för båda.
+2. Gå till create.roblox.com → *Creations* → **Upload Asset** (eller *Development Items → Audio*) → välj typ **Audio** och ladda upp filerna en i taget. Namn: `Halmstad Rush Engine` och `Halmstad Rush Music`.
+3. När de godkänts (brukar ta några minuter) kopierar du **ID-numret** för varje ljud och skickar dem till mig.
+Vill du hellre ha annan musik: sök i Studio under *Toolbox → Audio → Music* (musik från Roblox eller APM är fri att använda) och skicka ID:t.
 
 ### 6. Testa innan du släpper
 - **Flera spelare:** *Test → Clients and Servers* → 2–3 spelare → *Start*. Prova race, kull och att spelarna är spöken mot varandra i fri körning.
