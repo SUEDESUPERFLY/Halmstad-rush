@@ -97,7 +97,14 @@ VehicleConfig.Crash = {
 -- NPC-bilar som kör runt på huvudgatorna (fas 3)
 VehicleConfig.Npc = {
 	CollisionGroup = "NPCCars",
-	PerRoute = { StoraRingen = 7, Vastra = 3 },
+	-- Trafik: TrafficMax bilar på en tom server, en färre per riktig spelare (aldrig under TrafficMin).
+	TrafficMax = 25,
+	TrafficMin = 5,
+	TrafficPerPlayer = 1,
+	RouteShare = { StoraRingen = 0.7, Vastra = 0.3 }, -- andel av trafiken per rutt
+	TrafficAdjustInterval = 3, -- sekunder mellan varje justering (en bil i taget)
+	DespawnDistance = 300, -- en bil tas bara bort om ingen spelare är så här nära
+	SpawnSpacing = 40, -- ny bil inte närmare en annan NPC-bil än så
 	CruiseSpeed = 62,
 	Acceleration = 35,
 	Grip = 8,

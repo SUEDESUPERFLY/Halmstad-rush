@@ -594,7 +594,14 @@ VehicleConfig.Crash = {
 -- NPC-bilar som kör runt på huvudgatorna (fas 3)
 VehicleConfig.Npc = {
 	CollisionGroup = "NPCCars",
-	PerRoute = { StoraRingen = 7, Vastra = 3 },
+	-- Trafik: TrafficMax bilar på en tom server, en färre per riktig spelare (aldrig under TrafficMin).
+	TrafficMax = 25,
+	TrafficMin = 5,
+	TrafficPerPlayer = 1,
+	RouteShare = { StoraRingen = 0.7, Vastra = 0.3 }, -- andel av trafiken per rutt
+	TrafficAdjustInterval = 3, -- sekunder mellan varje justering (en bil i taget)
+	DespawnDistance = 300, -- en bil tas bara bort om ingen spelare är så här nära
+	SpawnSpacing = 40, -- ny bil inte närmare en annan NPC-bil än så
 	CruiseSpeed = 62,
 	Acceleration = 35,
 	Grip = 8,
@@ -5391,13 +5398,23 @@ local function cframeAt(route: { Vector2 }, index: number): CFrame
 	return CFrame.lookAt(position, ahead)
 end
 
--- Väljer en ruttpunkt långt från spelare (så att ingen ser bilen dyka upp).
-local function chooseSpawnIndex(route: { Vector2 }, preferred: number): number
-	local carPositions = {}
+local function playerCarPositions(): { Vector3 }
+	local positions = {}
 	for _, car in VehicleService.GetCars() do
 		if car.PrimaryPart then
-			table.insert(carPositions, car.PrimaryPart.Position)
+			table.insert(positions, car.PrimaryPart.Position)
 		end
+	end
+	return positions
+end
+
+-- Väljer en ruttpunkt långt från spelare (så att ingen ser bilen dyka upp) och inte
+-- ovanpå en annan NPC-bil.
+local function chooseSpawnIndex(route: { Vector2 }, preferred: number): number
+	local carPositions = playerCarPositions()
+	local npcPositions = {}
+	for _, other in npcs do
+		table.insert(npcPositions, other.Chassis.Position)
 	end
 	for offset = 0, #route - 1 do
 		local index = (preferred + offset - 1) % #route + 1
@@ -5405,6 +5422,12 @@ local function chooseSpawnIndex(route: { Vector2 }, preferred: number): number
 		local clear = true
 		for _, position in carPositions do
 			if (Vector2.new(position.X, position.Z) - point).Magnitude < N.MinSpawnDistance then
+				clear = false
+				break
+			end
+		end
+		for _, position in npcPositions do
+			if clear and (Vector2.new(position.X, position.Z) - point).Magnitude < N.SpawnSpacing then
 				clear = false
 				break
 			end
@@ -5675,6 +5698,69 @@ function NpcService.SpawnOnRoute(route: { Vector2 }, index: number, color: Color
 end
 
 -- Lyssnar på smällar ("Impact") och kvaddningar ("Wrecked") för alla NPC-bilar.
+-- Antal trafikbilar som ska finnas: en färre per riktig spelare.
+local function trafficTarget(): number
+	local target = N.TrafficMax - #Players:GetPlayers() * N.TrafficPerPlayer
+	return math.max(N.TrafficMin, target)
+end
+
+local function trafficCars(): { Npc }
+	local list = {}
+	for _, npc in npcs do
+		if npc.Kind == "Traffic" then
+			table.insert(list, npc)
+		end
+	end
+	return list
+end
+
+-- Flyttar trafiken ett steg mot målet. Bilar tas bara bort långt från spelare
+-- (och aldrig mitt i en knuff som kan bli en takedown), nya dyker upp utom synhåll.
+local function adjustTraffic(rng: Random)
+	local traffic = trafficCars()
+	local target = trafficTarget()
+	if #traffic > target then
+		local players = playerCarPositions()
+		local now = os.clock()
+		for _, npc in traffic do
+			local hitRecently = npc.LastHitter ~= nil and now - npc.LastHitTime < N.TakedownWindow + 1
+			local far = true
+			for _, position in players do
+				if (position - npc.Chassis.Position).Magnitude < N.DespawnDistance then
+					far = false
+					break
+				end
+			end
+			if far and not hitRecently and npc.Mode == "Drive" then
+				NpcService.Remove(npc)
+				return
+			end
+		end
+	elseif #traffic < target then
+		-- Lägg bilen på den rutt som har minst trafik i förhållande till sin andel
+		local counts: { [string]: number } = {}
+		for _, npc in traffic do
+			for name, route in routes do
+				if npc.Route == route then
+					counts[name] = (counts[name] or 0) + 1
+				end
+			end
+		end
+		local bestName, bestRatio = nil, math.huge
+		for name, share in N.RouteShare :: { [string]: number } do
+			local ratio = (counts[name] or 0) / share
+			if routes[name] and #routes[name] > 0 and ratio < bestRatio then
+				bestName, bestRatio = name, ratio
+			end
+		end
+		if bestName then
+			local route = routes[bestName]
+			local index = chooseSpawnIndex(route, rng:NextInteger(1, #route))
+			spawnNpc(route, index, N.Colors[rng:NextInteger(1, #N.Colors)], rng)
+		end
+	end
+end
+
 function NpcService.OnEvent(listener: (npc: Npc, event: string, strength: number) -> ())
 	table.insert(eventListeners, listener)
 end
@@ -5703,14 +5789,23 @@ function NpcService.Start()
 	folder.Parent = workspace
 
 	local rng = Random.new(2024)
-	for name, count in N.PerRoute :: { [string]: number } do
+	-- Första trafiken sprids jämnt längs rutterna
+	local target = trafficTarget()
+	for name, share in N.RouteShare :: { [string]: number } do
 		local route = routes[name]
+		local count = math.round(target * share)
 		if route and #route > 0 then
 			for i = 0, count - 1 do
 				spawnNpc(route, math.floor(i * #route / count) + 1, N.Colors[rng:NextInteger(1, #N.Colors)], rng)
 			end
 		end
 	end
+	task.spawn(function()
+		while true do
+			task.wait(N.TrafficAdjustInterval)
+			adjustTraffic(rng)
+		end
+	end)
 
 	RunService.PreSimulation:Connect(function(dt)
 		dt = math.min(dt, 1 / 30)

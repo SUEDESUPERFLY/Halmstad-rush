@@ -86,6 +86,7 @@ build/      -> byggd placefil (committas)
   - Gnistor och rök använder Robloxs inbyggda texturer (`rbxasset://`).
   - Plåtdelarna ligger i kollisionsgruppen `Debris` och krockar inte med bilar. Motverkad gravitation gör att de svävar sakta.
   - Oskärpa och avmättade färger ger slow motion-känsla. Fysiken saktas aldrig ner.
+- **Mängden trafik** (`VehicleConfig.Npc`): `TrafficMax` (25) bilar på en tom server, `TrafficPerPlayer` (1) färre per riktig spelare, aldrig under `TrafficMin`. Fördelas på rutterna efter `RouteShare`. `NpcService` justerar en bil var `TrafficAdjustInterval`:e sekund: nya bilar dyker upp utom synhåll (`MinSpawnDistance`) och inte närmare en annan NPC än `SpawnSpacing`. Bilar tas bara bort när ingen spelare är inom `DespawnDistance` och bilen inte nyss knuffats. Gäller bara trafik, inte race-, kull- eller krocklägesbilar.
 - `CrashEffect` skickas till alla när en NPC kvaddas, och visas för spelare inom 600 studs.
 - NPC-bilarna har attributet `Obstacle` och ger nära-ögat-boost.
 
@@ -251,7 +252,7 @@ build/      -> byggd placefil (committas)
 - [x] Fas 6: Stunts, budjobb, kull-jaktläge, krockläge
 - [x] Fas 7: Butik, game passes, developer products, daglig belöning
 - [x] Fas 8: Ljud, UI, minikarta, mobiloptimering
-- [ ] Fas 9: Snyggare stad: tak, fönster, trottoarer, träd, gatlyktor, vägmarkeringar, skuggor *(byggd, väntar på test)*
+- [x] Fas 9: Snyggare stad: tak, fönster, trottoarer, träd, gatlyktor, vägmarkeringar, skuggor
 
 ## Kända begränsningar / att göra
 - Lint i molnmiljön: `stylua --syntax luau --check` (syntax) och `selene src` (`selene.toml`, egen std `roblox_min.yml` där Roblox-globaler bara deklareras). Ingen typkontroll (luau-lsp saknas), så typfel syns först i Studios Output-fönster. Verktygen installeras med `cargo install stylua selene` om de saknas.
