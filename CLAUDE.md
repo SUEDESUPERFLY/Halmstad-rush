@@ -235,6 +235,6 @@ build/      -> byggd placefil (committas)
 - Cirka 5 600 hus som Parts plus Terrain, med StreamingEnabled (fas 8). Testa på en riktig mobil innan publicering.
 - UI-språket är blandat (svenska menyer, engelska spelord som WRECKED!/TAKEDOWN!). Beslutet säger engelska med svensk översättning via Localization, så det behöver stämmas av.
 - Inget motorljud förrän ett ljud-ID läggs in i `SoundConfig.EngineId`.
-- Game pass- och produkt-ID:n är 0 tills de skapats på roblox.com (`ShopConfig`).
+- Alla game pass- och produkt-ID:n är inlagda i `ShopConfig`. Passen måste vara "Item for Sale" på roblox.com för att gå att köpa.
 - Krockdetekteringen kan ge falska WRECKED! vid hårda landningar i backar. Justera `Crash.WreckImpact` vid behov.
 - Gatorna saknar vägmarkeringar. Husen är enkla block utan tak och fönster (polering senare).

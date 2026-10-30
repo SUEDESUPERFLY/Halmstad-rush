@@ -432,8 +432,8 @@ ShopConfig.Passes = {
 } :: { Pass }
 
 ShopConfig.Products = {
-	{ Key = "Confetti", Id = 0, Name = "Konfettiregn", Description = "Fira med konfetti över din bil – alla i närheten ser det." },
-	{ Key = "Support", Id = 0, Name = "Stöd utvecklaren", Description = "Ett stort tack! Ger ingen fördel i spelet." },
+	{ Key = "Confetti", Id = 3724218944, Name = "Konfettiregn", Description = "Fira med konfetti över din bil – alla i närheten ser det." },
+	{ Key = "Support", Id = 3724219257, Name = "Stöd utvecklaren", Description = "Ett stort tack! Ger ingen fördel i spelet." },
 } :: { Product }
 
 ShopConfig.StudioTestPurchases = true
