@@ -5,7 +5,7 @@
 --
 --   Galgberget (NV)          Norra vägen / Nissansbron
 --        \                     |
---   Västra ringen -- Centrum (Stora torg) | Nissan | Östra Förstaden -- Kustvägen
+--   Kristian IV:s väg -- Centrum (Stora torg) | Nissan | Östra Förstaden -- Kustvägen
 --        |                Slottet         |        Hamnen / industri
 --   Tylösandsvägen (landsväg väster ut)   |        Östra stranden (SO)
 --   Tylösand (långt i väster)           Havet (Laholmsbukten) i söder
@@ -14,8 +14,10 @@ export type Road = {
 	Name: string,
 	Width: number,
 	Points: { Vector2 }, -- (X, Z)
-	Trees: boolean?,
-	LaneLines: boolean?,
+	Town: boolean?, -- trottoarer, övergångsställen, trafikljus och gatuskyltar
+	Lamps: boolean?, -- gatlyktor
+	Palms: { number }?, -- sidor med palmer: 1 = vänster om färdriktningen, -1 = höger
+	Trees: boolean?, -- lövträd längs vägen (landsväg)
 }
 
 export type Zone = {
@@ -61,6 +63,22 @@ export type Ramp = {
 	Width: number,
 }
 
+export type Sign = {
+	Kind: string, -- "Billboard" | "Highway" | "Plaque" | "Arch"
+	Text: string,
+	SubText: string?,
+	Position: Vector3, -- mitt på marken
+	Yaw: number, -- hållet skyltens framsida vänder sig mot (samma gradskala som ramper)
+	Width: number?,
+	Color: Color3?,
+	TextColor: Color3?,
+}
+
+export type Rect = {
+	Min: Vector2,
+	Max: Vector2,
+}
+
 export type Location = {
 	Id: string,
 	Name: string,
@@ -80,7 +98,7 @@ end
 
 local MapData = {}
 
-MapData.WaterLevel = -3
+MapData.WaterLevel = -4 -- Terrain-vatten fylls från -16 upp till hit
 MapData.SeaStartZ = 900
 MapData.River = { MinX = 150, MaxX = 230 } -- Nissan rinner från norr till havet
 
@@ -92,27 +110,36 @@ MapData.Bounds = {
 
 MapData.TestTrackOrigin = Vector3.new(6000, 0, 0)
 
+MapData.SidewalkWidth = 8
+
 MapData.Roads = {
-	{ Name = "Storgatan", Width = 28, Points = { v(-150, 100), v(-150, -300) } },
-	{ Name = "Brogatan", Width = 30, Points = { v(-500, 100), v(1000, 100) } },
-	{ Name = "Norra vägen", Width = 30, Points = { v(-500, -300), v(1000, -300) } },
-	{ Name = "Västra ringen", Width = 28, Points = { v(-500, -300), v(-500, 650) } },
-	{ Name = "Strandgatan", Width = 28, Points = { v(110, -300), v(110, 650) } },
-	{ Name = "Slottsgatan", Width = 26, Points = { v(-500, 350), v(110, 350) } },
-	{ Name = "Hamngatan", Width = 30, Points = { v(-500, 650), v(1000, 650) } },
-	{ Name = "Östra vägen", Width = 28, Points = { v(600, -300), v(600, 650) } },
-	{ Name = "Hamnvägen", Width = 28, Points = { v(600, 500), v(1000, 500) } },
-	{ Name = "Industrigatan", Width = 28, Points = { v(800, 100), v(800, 650) } },
-	{ Name = "Kustvägen", Width = 28, Points = { v(1000, -300), v(1000, 760), v(1950, 760) } },
+	{ Name = "Storgatan", Width = 28, Points = { v(-150, 100), v(-150, -300) }, Town = true, Lamps = true },
+	{ Name = "Brogatan", Width = 30, Points = { v(-500, 100), v(1000, 100) }, Town = true, Lamps = true },
+	{ Name = "Norra vägen", Width = 30, Points = { v(-500, -300), v(1000, -300) }, Town = true, Lamps = true },
+	{
+		Name = "Kristian IV:s väg",
+		Width = 30,
+		Points = { v(-500, -300), v(-500, 650) },
+		Town = true,
+		Lamps = true,
+		Palms = { 1, -1 },
+	},
+	{ Name = "Strandgatan", Width = 28, Points = { v(110, -300), v(110, 650) }, Town = true, Lamps = true, Palms = { -1 } },
+	{ Name = "Slottsgatan", Width = 26, Points = { v(-500, 350), v(110, 350) }, Town = true, Lamps = true },
+	{ Name = "Hamngatan", Width = 30, Points = { v(-500, 650), v(1000, 650) }, Town = true, Lamps = true, Palms = { 1 } },
+	{ Name = "Östra vägen", Width = 28, Points = { v(600, -300), v(600, 650) }, Town = true, Lamps = true },
+	{ Name = "Hamnvägen", Width = 28, Points = { v(600, 500), v(1000, 500) }, Town = true, Lamps = true },
+	{ Name = "Industrigatan", Width = 28, Points = { v(800, 100), v(800, 650) }, Town = true, Lamps = true },
+	{ Name = "Kustvägen", Width = 28, Points = { v(1000, -300), v(1000, 760) }, Town = true, Lamps = true },
+	{ Name = "Strandvägen", Width = 30, Points = { v(1000, 760), v(1950, 760) }, Town = true, Lamps = true, Palms = { 1, -1 } },
 	{ Name = "Galgbergsvägen", Width = 24, Points = { v(-500, -300), v(-660, -470) } },
 	{
 		Name = "Tylösandsvägen",
 		Width = 32,
 		Points = { v(-500, 650), v(-900, 660), v(-1400, 560), v(-1900, 640), v(-2300, 720), v(-2400, 780) },
 		Trees = true,
-		LaneLines = true,
 	},
-	{ Name = "Tylösand strandväg", Width = 28, Points = { v(-2950, 780), v(-2100, 780) } },
+	{ Name = "Tylösand strandväg", Width = 28, Points = { v(-2950, 780), v(-2100, 780) }, Lamps = true, Palms = { 1, -1 } },
 } :: { Road }
 
 -- Broar över Nissan: vägarna ovan går rakt över ån, här läggs räcken och pelare till.
@@ -243,6 +270,78 @@ MapData.Landmarks = {
 	Harbor = { Min = v(360, 690), Max = v(960, 775), CraneZ = 885, CraneXs = { 420, 620, 820 } },
 }
 
+-- Ytor där kvartersfyllningen inte bygger hus (kyrka, park, höghus).
+MapData.Reserved = {
+	{ Min = v(-128, -10), Max = v(20, 78) }, -- Sankt Nikolai kyrka
+	{ Min = v(-128, -278), Max = v(88, -120) }, -- Norre Katts park
+	{ Min = v(252, -278), Max = v(330, 78) }, -- glashus vid Nissan
+} :: { Rect }
+
+MapData.Church = { Center = v(-50, 35), Length = 100, Width = 50 }
+MapData.Park = { Name = "Norre Katts park", Min = v(-128, -278), Max = v(88, -120), Pond = v(-20, -200) }
+MapData.GlassTowers = {
+	{ Center = v(290, -220), Size = 40, Height = 70 },
+	{ Center = v(290, -110), Size = 40, Height = 95 },
+	{ Center = v(290, 10), Size = 40, Height = 60 },
+}
+
+-- Hollywood-skylten fast i Halmstad: stora bokstäver i backen på Galgberget, vända mot stan.
+MapData.HalmstadSign = {
+	Text = "HALMSTAD",
+	HillCenter = v(-1000, -750),
+	Distance = 190,
+	FaceToward = v(-150, 180), -- Stora torg
+	Pixel = 4,
+}
+
+-- Strandliv (parasoller, badvakttorn, surfbrädor)
+MapData.Beaches = {
+	{
+		Name = "Tylösand",
+		Min = v(-2940, 805),
+		Max = v(-2110, 890),
+		Lifeguards = { -2750, -2250 },
+		Volleyball = v(-2350, 845),
+		Surfboards = v(-2650, 812),
+		Keep = { -2500 }, -- badbryggan
+	},
+	{
+		Name = "Östra stranden",
+		Min = v(1050, 820),
+		Max = v(1940, 890),
+		Lifeguards = { 1250, 1800 },
+		Volleyball = v(1700, 862),
+		Surfboards = v(1150, 825),
+		Keep = { 1450, 1600 }, -- piren och plaskrampen
+	},
+}
+
+MapData.Boardwalk = { Min = v(1040, 791), Max = v(1950, 799) }
+MapData.FerrisPier = { Start = v(1450, 880), Length = 240, Width = 30, WheelRadius = 30 }
+MapData.Breakwater = { Start = v(262, 900), Length = 200, Width = 14 }
+MapData.Ship = { Center = v(650, 965), Length = 150, Width = 30, Name = "M/S LAXEN" }
+MapData.WindTurbines = { v(-1850, 470), v(-1550, 450), v(-1250, 480) }
+
+local SIGN_BLUE = Color3.fromRGB(30, 80, 160)
+local SIGN_GREEN = Color3.fromRGB(20, 110, 60)
+MapData.Signs = {
+	{ Kind = "Billboard", Text = "VÄLKOMMEN TILL HALMSTAD", SubText = "Sveriges soligaste kuststad", Position = Vector3.new(-640, 0, 700), Yaw = 90, Width = 56, Color = Color3.fromRGB(250, 200, 60), TextColor = Color3.fromRGB(30, 40, 80) },
+	{ Kind = "Highway", Text = "TYLÖSAND  ↑", SubText = "Halmstad C  ↓", Position = Vector3.new(-820, 0, 612), Yaw = -90, Width = 30, Color = SIGN_GREEN },
+	{ Kind = "Highway", Text = "HALMSTAD C  ↑", SubText = "Tylösand  ↓", Position = Vector3.new(-2000, 0, 705), Yaw = 75, Width = 30, Color = SIGN_GREEN },
+	{ Kind = "Billboard", Text = "KUSTPILEN", SubText = "Hallands snabbaste cab", Position = Vector3.new(-1150, 0, 665), Yaw = 75, Width = 44, Color = Color3.fromRGB(230, 60, 60) },
+	{ Kind = "Billboard", Text = "GLASS PÅ STRANDEN", SubText = "Två kulor – 25 kr", Position = Vector3.new(-1650, 0, 560), Yaw = -100, Width = 44, Color = Color3.fromRGB(255, 150, 200), TextColor = Color3.fromRGB(80, 20, 60) },
+	{ Kind = "Billboard", Text = "SURFA I LAHOLMSBUKTEN", SubText = "Tylösand Surfskola", Position = Vector3.new(-2150, 0, 740), Yaw = 70, Width = 48, Color = Color3.fromRGB(40, 170, 200) },
+	{ Kind = "Arch", Text = "TYLÖSAND", Position = Vector3.new(-2160, 0, 780), Yaw = -90, Width = 44, Color = SIGN_BLUE },
+	{ Kind = "Arch", Text = "ÖSTRA STRANDEN", Position = Vector3.new(1070, 0, 760), Yaw = 90, Width = 46, Color = Color3.fromRGB(240, 120, 40) },
+	{ Kind = "Billboard", Text = "HAMNHOPPET  ←", SubText = "Glöm inte boosten!", Position = Vector3.new(350, 0, 870), Yaw = -90, Width = 36, Color = Color3.fromRGB(240, 170, 40), TextColor = Color3.fromRGB(30, 30, 30) },
+	{ Kind = "Billboard", Text = "HALMSTADS HAMN", Position = Vector3.new(700, 0, 681), Yaw = 0, Width = 40, Color = SIGN_BLUE },
+	{ Kind = "Plaque", Text = "STORA TORG", Position = Vector3.new(-230, 0, 248), Yaw = 0, Width = 16, Color = SIGN_BLUE },
+	{ Kind = "Plaque", Text = "HALMSTADS SLOTT", Position = Vector3.new(72, 0, 590), Yaw = -90, Width = 20, Color = SIGN_BLUE },
+	{ Kind = "Plaque", Text = "SANKT NIKOLAI KYRKA", Position = Vector3.new(-40, 0, 72), Yaw = 180, Width = 22, Color = SIGN_BLUE },
+	{ Kind = "Plaque", Text = "NORRE KATTS PARK", Position = Vector3.new(-122, 0, -200), Yaw = 90, Width = 20, Color = SIGN_GREEN },
+	{ Kind = "Plaque", Text = "GALGBERGET", Position = Vector3.new(-640, 0, -440), Yaw = -137, Width = 18, Color = SIGN_GREEN },
+} :: { Sign }
+
 -- Reserverad korsning för krockläget (fas 6)
 MapData.CrashJunction = v(800, 500)
 
@@ -277,6 +376,26 @@ MapData.Districts = {
 } :: { Area }
 
 -- Spelarnas startplats: två rader om fem bilar på Stora torg, vända mot norr.
+-- Höjden på en kulle (Terrain) i punkten (x, z). Samma formel används när kullen byggs.
+function MapData.HillHeight(hill: Hill, x: number, z: number): number
+	local r = math.sqrt((x - hill.Center.X) ^ 2 + (z - hill.Center.Y) ^ 2)
+	if r <= hill.FlatRadius then
+		return hill.Height
+	elseif r >= hill.Radius then
+		return 0
+	end
+	local t = (r - hill.FlatRadius) / (hill.Radius - hill.FlatRadius)
+	return hill.Height * (0.5 + 0.5 * math.cos(math.pi * t))
+end
+
+function MapData.GroundHeightAt(x: number, z: number): number
+	local best = 0
+	for _, hill in MapData.Hills do
+		best = math.max(best, MapData.HillHeight(hill, x, z))
+	end
+	return best
+end
+
 function MapData.PlayerSpawn(slot: number): CFrame
 	local column = (slot - 1) % 5
 	local row = math.floor((slot - 1) / 5) % 2
