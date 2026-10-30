@@ -17,6 +17,7 @@ local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Geometry = require(script.Parent.Parent.Map.Geometry)
 local CrashService = require(script.Parent.CrashService)
+local DataService = require(script.Parent.DataService)
 local EconomyService = require(script.Parent.EconomyService)
 local NpcService = require(script.Parent.NpcService)
 local RespawnService = require(script.Parent.RespawnService)
@@ -208,9 +209,17 @@ local function finishRace(session: Session)
 			Takedowns = participant.Takedowns,
 		})
 	end
-	for _, participant in order do
+	for position, participant in order do
 		local player = participant.Player
 		if player then
+			if participant.FinishTime then
+				DataService.Update(player, function(data)
+					data.Stats.RacesFinished += 1
+					if position == 1 then
+						data.Stats.RacesWon += 1
+					end
+				end)
+			end
 			for _, result in results do
 				if result.UserId == player.UserId and result.Reward > 0 then
 					EconomyService.AddMoney(player, result.Reward, session.Race.Name)

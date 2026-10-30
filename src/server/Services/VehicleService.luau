@@ -13,8 +13,10 @@ local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local CarCatalog = require(ReplicatedStorage.Shared.Config.CarCatalog)
 local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
 local CarBuilder = require(script.Parent.Parent.Vehicle.CarBuilder)
+local DataService = require(script.Parent.DataService)
 
 local ServerLimits = VehicleConfig.Server
 local CAR_GROUP = VehicleConfig.CollisionGroup
@@ -30,6 +32,7 @@ type CarRecord = {
 	SpeedStrikes: number,
 	IgnoreChecksUntil: number,
 	CollisionGroup: string,
+	SpeedCap: number, -- bilens högsta tillåtna fart (med uppgraderingar)
 }
 
 local VehicleService = {}
@@ -38,14 +41,33 @@ local cars: { [Player]: CarRecord } = {}
 local usedSlots: { [number]: boolean } = {}
 local spawnProvider: ((slot: number) -> CFrame)? = nil
 
-local CAR_COLORS = {
-	Color3.fromRGB(230, 60, 60),
-	Color3.fromRGB(40, 130, 230),
-	Color3.fromRGB(250, 190, 30),
-	Color3.fromRGB(60, 190, 90),
-	Color3.fromRGB(160, 80, 220),
-	Color3.fromRGB(250, 120, 30),
+-- Bilens egenskaper som attribut (klienten läser dem för sin fysik).
+local STAT_ATTRIBUTES = {
+	TopSpeed = "TopSpeedMul",
+	Acceleration = "AccelerationMul",
+	Handling = "HandlingMul",
+	Boost = "BoostMul",
+	Charge = "ChargeMul",
+	HillAssist = "HillAssistMul",
 }
+
+-- Vald bil, färg och uppgraderingar från profilen (standardbilen om profilen saknas).
+local function carSettings(player: Player): (string, Color3, CarCatalog.Stats)
+	local data = DataService.WaitForData(player)
+	local carId = if data then data.SelectedCar else CarCatalog.StarterCar
+	local carData = data and data.OwnedCars[carId]
+	local color = CarCatalog.FindColor(if carData then carData.Color else CarCatalog.DefaultColor)
+	local stats = CarCatalog.ComputeStats(carId, carData and carData.Upgrades)
+	return carId, (color or CarCatalog.Colors[1]).Color, stats
+end
+
+local function applyStats(model: Model, carId: string, stats: CarCatalog.Stats): number
+	model:SetAttribute("CarId", carId)
+	for stat, attribute in STAT_ATTRIBUTES do
+		model:SetAttribute(attribute, (stats :: any)[stat])
+	end
+	return ServerLimits.HorizontalSpeedCap * CarCatalog.MaxBoostMultiplier(stats)
+end
 
 -- Kartan (eller testbanan) talar om var nya bilar ska starta.
 function VehicleService.SetSpawnProvider(provider: (slot: number) -> CFrame)
@@ -132,7 +154,7 @@ local function seatDriver(record: CarRecord, humanoid: Humanoid)
 	end)
 end
 
-local function spawnCarFor(player: Player, character: Model)
+local function createCar(player: Player, character: Model, at: CFrame?, group: string?)
 	destroyCar(player)
 
 	local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
@@ -141,10 +163,17 @@ local function spawnCarFor(player: Player, character: Model)
 		return
 	end
 
+	local carId, color, stats = carSettings(player)
+	if player.Character ~= character or character.Parent == nil then
+		return
+	end
+	local car = CarCatalog.FindCar(carId) or CarCatalog.Cars[1]
 	local slot = claimSlot()
-	local model = CarBuilder.Build(CAR_COLORS[(slot - 1) % #CAR_COLORS + 1], player.UserId)
-	setCollisionGroup(model, CAR_GROUP)
-	local spawnCFrame = getSpawnCFrame(slot)
+	local model = CarBuilder.Build(color, player.UserId, car.Style)
+	local speedCap = applyStats(model, carId, stats)
+	local collisionGroup = group or CAR_GROUP
+	setCollisionGroup(model, collisionGroup)
+	local spawnCFrame = at or getSpawnCFrame(slot)
 	model:PivotTo(spawnCFrame)
 	model.Parent = workspace
 
@@ -158,7 +187,8 @@ local function spawnCarFor(player: Player, character: Model)
 		LastCheck = os.clock(),
 		SpeedStrikes = 0,
 		IgnoreChecksUntil = os.clock() + 2,
-		CollisionGroup = CAR_GROUP,
+		CollisionGroup = collisionGroup,
+		SpeedCap = speedCap,
 	}
 	cars[player] = record
 	record.Chassis:SetNetworkOwner(player)
@@ -184,6 +214,10 @@ local function spawnCarFor(player: Player, character: Model)
 	end)
 end
 
+local function spawnCarFor(player: Player, character: Model)
+	createCar(player, character, nil, nil)
+end
+
 local function validateCar(record: CarRecord, now: number)
 	local chassis = record.Chassis
 	local position = chassis.Position
@@ -199,7 +233,7 @@ local function validateCar(record: CarRecord, now: number)
 	local velocity = chassis.AssemblyLinearVelocity
 	local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
 	local moved = (position - record.LastPosition) * Vector3.new(1, 0, 1)
-	local maxMove = ServerLimits.HorizontalSpeedCap * elapsed * 1.5 + ServerLimits.TeleportSlack
+	local maxMove = record.SpeedCap * elapsed * 1.5 + ServerLimits.TeleportSlack
 
 	if moved.Magnitude > maxMove then
 		warn(("[VehicleService] %s flyttade %.0f studs på %.2f s, återställer"):format(
@@ -211,12 +245,12 @@ local function validateCar(record: CarRecord, now: number)
 		return
 	end
 
-	if horizontalSpeed > ServerLimits.HorizontalSpeedCap then
+	if horizontalSpeed > record.SpeedCap then
 		record.SpeedStrikes += 1
 		if record.SpeedStrikes >= ServerLimits.SpeedStrikesBeforeCorrection then
 			warn(("[VehicleService] %s körde %.0f studs/s, bromsar"):format(record.Player.Name, horizontalSpeed))
 			record.SpeedStrikes = 0
-			forceMove(record, chassis.CFrame, velocity.Unit * ServerLimits.HorizontalSpeedCap * 0.8)
+			forceMove(record, chassis.CFrame, velocity.Unit * record.SpeedCap * 0.8)
 			return
 		end
 	else
@@ -264,6 +298,32 @@ function VehicleService.SetCollisionGroup(player: Player, group: string?)
 	if player.Character then
 		setCollisionGroup(player.Character, record.CollisionGroup)
 	end
+end
+
+-- Byter till spelarens valda bil (efter köp eller byte i garaget) där den gamla stod.
+function VehicleService.RebuildCar(player: Player)
+	local record = cars[player]
+	local character = player.Character
+	if not record or not character then
+		return
+	end
+	local at = CFrame.new(record.Chassis.Position + Vector3.new(0, 4, 0)) * flatYaw(record.Chassis.CFrame)
+	task.spawn(createCar, player, character, at, record.CollisionGroup)
+end
+
+-- Uppdaterar egenskaper och lack på bilen som redan finns (efter uppgradering eller lackering).
+function VehicleService.RefreshCar(player: Player)
+	local record = cars[player]
+	if not record then
+		return
+	end
+	local carId, color, stats = carSettings(player)
+	if record.Model:GetAttribute("CarId") ~= carId then
+		VehicleService.RebuildCar(player)
+		return
+	end
+	record.SpeedCap = applyStats(record.Model, carId, stats)
+	CarBuilder.Paint(record.Model, color)
 end
 
 -- Ställer bilen på hjulen där den står, vänd åt samma håll.

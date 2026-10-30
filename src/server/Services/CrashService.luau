@@ -2,7 +2,7 @@
 -- Krockar och takedowns på servern:
 --  * Kvaddade spelarbilar flyttas tillbaka till gatan (ReportWreck, med cooldown).
 --    Under ett race tar RespawnService:s override hand om var bilen hamnar.
---  * Takedowns räknas här, syns i leaderstats och ger pengar. Klienten kan aldrig själv
+--  * Takedowns räknas här (sparas i profilen, speglas i leaderstats) och ger pengar. Klienten kan aldrig själv
 --    rapportera en takedown: NpcService och RaceService avgör utifrån vad servern ser.
 
 local PhysicsService = game:GetService("PhysicsService")
@@ -12,7 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local EconomyConfig = require(ReplicatedStorage.Shared.Config.EconomyConfig)
 local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
-local Leaderstats = require(script.Parent.Parent.Util.Leaderstats)
+local DataService = require(script.Parent.DataService)
 local EconomyService = require(script.Parent.EconomyService)
 local RespawnService = require(script.Parent.RespawnService)
 
@@ -52,7 +52,9 @@ function CrashService.AwardTakedown(player: Player, victim: BasePart)
 	if player.Parent ~= Players then
 		return
 	end
-	Leaderstats.Get(player, "Takedowns").Value += 1
+	DataService.Update(player, function(data)
+		data.Takedowns += 1
+	end)
 	EconomyService.AddMoney(player, EconomyConfig.TakedownReward, "Takedown")
 	takedownRemote:FireClient(player, victim)
 	for _, listener in takedownListeners do
@@ -75,13 +77,6 @@ function CrashService.Init()
 end
 
 function CrashService.Start()
-	local function onPlayer(player: Player)
-		Leaderstats.Get(player, "Takedowns")
-	end
-	Players.PlayerAdded:Connect(onPlayer)
-	for _, player in Players:GetPlayers() do
-		onPlayer(player)
-	end
 	Players.PlayerRemoving:Connect(function(player)
 		lastWreck[player] = nil
 	end)

@@ -17,6 +17,7 @@ local modules = {
 	UI:WaitForChild("DistrictBanner"),
 	UI:WaitForChild("LocationMenu"),
 	UI:WaitForChild("RaceUI"),
+	UI:WaitForChild("GarageUI"),
 }
 
 for _, module in modules do

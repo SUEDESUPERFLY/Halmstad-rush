@@ -103,9 +103,36 @@ build/      -> byggd placefil (committas)
   - Takedowns på motståndare räknas som vanliga takedowns och ger bonus vid målgång.
   - En kvaddad spelare (ReportWreck) ger takedown till närmaste annan deltagare inom `PlayerTakedownRadius`.
   - Känd svaghet: en klient kan fejka kvaddningar och skänka takedowns till någon i närheten. Det begränsas av cooldown och avstånd och ger bara små belopp.
-- **Pengar (`EconomyService`):** leaderstats `Kronor`, bara i minnet tills fas 5. `AddMoney` validerar beloppet (`MaxSingleReward`). En takedown i fri körning ger `EconomyConfig.TakedownReward`. Nära ögat, drift och lufttid ger ingen pengar, eftersom de räknas på klienten.
+- **Pengar (`EconomyService`):** leaderstats `Kronor`, sparas i profilen från och med fas 5. `AddMoney` validerar beloppet (`MaxSingleReward`). En takedown i fri körning ger `EconomyConfig.TakedownReward`. Nära ögat, drift och lufttid ger ingen pengar, eftersom de räknas på klienten.
 - `src/server/Util/Leaderstats.luau` skapar leaderstats-värden vid behov.
 - Startlinjen har en neonring, en banderoll och en BillboardGui. Spelaren kör in i ringen och trycker på knappen eller E. Snabbresan "Race: Stora ringen" går till startlinjen.
+
+## Sparad data, garage och bilar (fas 5)
+- **`DataService`** (DataStore `DataConfig.StoreName`, nyckel `Player_<UserId>`):
+  - Varje anrop görs med retry och exponentiell backoff.
+  - Sessionslås `_lock = { JobId, Time }` i posten. Är låset någon annans och färskare än `LockTimeout` väntar servern (`LockWaitAttempts`) och kickar sedan med en förklaring.
+  - Autosparning var `AutosaveInterval`. Spelaren sparas och låset släpps vid `PlayerRemoving` och `BindToClose`.
+  - Misslyckad laddning ger en icke-sparad profil som aldrig skriver över den riktiga datan.
+  - Opublicerat place eller Studio utan API-åtkomst: data sparas bara i minnet, och spelaren får en notis.
+- **Schema v1** (`PlayerData`): `Version`, `Money`, `Takedowns`, `OwnedCars[id] = { Upgrades = { Engine, Grip, Turbo }, Color }`, `SelectedCar`, `Stats = { RacesFinished, RacesWon }`.
+  - `sanitize` migrerar och validerar allt som läses in: okända bilar och färger tas bort, nivåer kläms, och startbilen finns alltid.
+  - Nya fält kräver ny `SchemaVersion` och en migrering i `sanitize`.
+- **All ändring av sparad data** går via `DataService.Update(player, fn)`. Den markerar profilen för sparning och skickar `Changed`, som speglas till leaderstats (`EconomyService`) och till klienten (`GarageService` → `ProfileUpdated`).
+- **`EconomyService`:** `AddMoney` (validerat belopp) och `Spend` (bara om saldot räcker). Pengarna lever i profilen.
+- **`CarCatalog` (delad):**
+  - 5 bilar: Kustpilen (start), Laxen, Galgbergaren, Tylösand GT och Stormvind. De köps bara med kronor, aldrig med Robux.
+  - Uppgraderingarna Motor, Grepp och Turbo (3 nivåer var) och 12 lackfärger (`PaintCost`).
+  - `ComputeStats` ger multiplikatorer.
+- **`GarageService`:** tar emot `GarageAction(action, carId, arg)`.
+  - Validerar typ, längd, cooldown, ägande, nivå och saldo.
+  - Stängt under race.
+  - Köp och byte bygger om bilen där den står (`VehicleService.RebuildCar`). Uppgradering och lackering ändrar bilen på plats (`RefreshCar`).
+- **Bilens egenskaper:**
+  - Servern sätter dem som attribut på bilmodellen (`TopSpeedMul`, `AccelerationMul`, `HandlingMul`, `BoostMul`, `ChargeMul`, `HillAssistMul`, `CarId`), och klientens fysik läser dem.
+  - Serverns fartgräns per bil = `Server.HorizontalSpeedCap × TopSpeed × Boost`.
+- **`CarBuilder`:** 5 karosstilar (Cabriolet, Hatch, Coupe, Jeep, Hyper) på samma chassi och samma fysik. Delar med attributet `Paint` lackeras om med `CarBuilder.Paint`.
+- **Garagemenyn** (`GarageUI`) öppnas med G eller GARAGE-knappen och visar bara det servern skickat.
+- **För riktig sparning i Studio** måste placet vara publicerat (File → Publish to Roblox) och Game Settings → Security → "Enable Studio Access to API Services" vara påslaget.
 
 ## Kontroller
 | | Tangentbord | Handkontroll | Touch |
@@ -118,6 +145,7 @@ build/      -> byggd placefil (committas)
 | Återställ (2 tryck = till väg) | R | Y | ↻ |
 | Snabbresa | M | Select | MAP-knappen |
 | Starta/gå med i race (vid startlinjen) | E | B | knappen START RACE |
+| Garage | G | – | GARAGE-knappen |
 
 ## Beslut
 | Beslut | Val |
@@ -135,8 +163,8 @@ build/      -> byggd placefil (committas)
 - [x] Fas 1: Struktur + körbar bil med arkadfysik, drift och boost på en testplatta. Touch-kontroller.
 - [x] Fas 2: Halmstad från riktiga stadskartan + respawn-system
 - [x] Fas 3: Krockar, takedowns, krockkamera, enkla NPC-bilar
-- [ ] Fas 4: Första racet + poäng/pengar (i minnet) *(byggd, väntar på test)*
-- [ ] Fas 5: DataStore (retry, sessionslås, versionerat schema), garage, bilköp, uppgraderingar, lackering
+- [x] Fas 4: Första racet + poäng/pengar (i minnet)
+- [ ] Fas 5: DataStore (retry, sessionslås, versionerat schema), garage, bilköp, uppgraderingar, lackering *(byggd, väntar på test)*
 - [ ] Fas 6: Stunts, budjobb, kull-jaktläge, krockläge
 - [ ] Fas 7: Butik, game passes, developer products, daglig belöning
 - [ ] Fas 8: Ljud, UI, minikarta, mobiloptimering

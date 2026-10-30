@@ -21,6 +21,8 @@ Remotes.Names = {
 	RaceCheckpoint = "RaceCheckpoint", -- server -> klient, (passedIndex: number)
 	RaceUpdate = "RaceUpdate", -- server -> klient, (position, participants, elapsed)
 	RaceFinished = "RaceFinished", -- server -> klient, (results: table)
+	GarageAction = "GarageAction", -- klient -> server, (action: "Buy"|"Select"|"Upgrade"|"Paint", carId: string, arg: string?)
+	ProfileUpdated = "ProfileUpdated", -- server -> klient, (profile: table) pengar, bilar, uppgraderingar
 }
 
 local FOLDER_NAME = "Remotes"

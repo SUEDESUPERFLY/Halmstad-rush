@@ -79,6 +79,23 @@ local lastSetVelocity: Vector3? = nil
 local lastPosition: Vector3? = nil
 local ignoreCrashUntil = 0
 local inputLockUntil = 0
+
+-- Bilens egenskaper (multiplikatorer) som servern satt som attribut på bilen.
+local carStats = { Top = 1, Accel = 1, Handling = 1, Boost = 1, Charge = 1, Hill = 1 }
+local attributeConnection: RBXScriptConnection? = nil
+
+local function readCarStats(model: Model)
+	local function get(name: string): number
+		local value = model:GetAttribute(name)
+		return if typeof(value) == "number" then value else 1
+	end
+	carStats.Top = get("TopSpeedMul")
+	carStats.Accel = get("AccelerationMul")
+	carStats.Handling = get("HandlingMul")
+	carStats.Boost = get("BoostMul")
+	carStats.Charge = get("ChargeMul")
+	carStats.Hill = get("HillAssistMul")
+end
 local lockedThrottle = 0
 local lockHold = false
 
@@ -159,6 +176,10 @@ local function exitCar()
 	car = nil
 	chassis = nil
 	wheels = {}
+	if attributeConnection then
+		attributeConnection:Disconnect()
+		attributeConnection = nil
+	end
 	setPlayerControlsEnabled(true)
 	VehicleController.Exited:Fire()
 end
@@ -175,6 +196,10 @@ local function enterCar(model: Model)
 	car = model
 	chassis = root
 	wheels = {}
+	readCarStats(model)
+	attributeConnection = model.AttributeChanged:Connect(function()
+		readCarStats(model)
+	end)
 	for _, child in root:GetChildren() do
 		if child:IsA("Attachment") and child.Name:sub(1, 6) == "Mount_" then
 			local force = child:FindFirstChild("Spring") :: VectorForce
@@ -239,7 +264,7 @@ local function checkNearMiss(cf: CFrame, speed: number)
 			local hit = result.Instance
 			if (nearMissCooldown[hit] or 0) < now then
 				nearMissCooldown[hit] = now + T.NearMissCooldown
-				state.Boost = math.min(1, state.Boost + T.ChargeNearMiss)
+				state.Boost = math.min(1, state.Boost + T.ChargeNearMiss * carStats.Charge)
 				VehicleController.Popup:Fire("NEAR MISS!", "nearmiss")
 			end
 		end
@@ -359,15 +384,15 @@ local function step(dt: number)
 		local vN = velocity:Dot(normal)
 
 		-- Gas, broms, back
-		local maxSpeed = if wantsBoost then T.BoostMaxSpeed else T.MaxSpeed
-		local acceleration = if wantsBoost then T.BoostAcceleration else T.Acceleration
+		local maxSpeed = (if wantsBoost then T.BoostMaxSpeed * carStats.Boost else T.MaxSpeed) * carStats.Top
+		local acceleration = (if wantsBoost then T.BoostAcceleration else T.Acceleration) * carStats.Accel
 		local throttle = if wantsBoost then 1 else input.Throttle
 		if throttle > 0 and vF < maxSpeed then
 			vF = math.min(vF + acceleration * throttle * dt, maxSpeed)
 		end
 		-- Backhjälp: i uppförsbacke tar vi bort en del av tyngdkraften när man gasar.
 		if throttle > 0 and forward.Y > 0 then
-			vF += workspace.Gravity * forward.Y * T.HillAssist * throttle * dt
+			vF += workspace.Gravity * forward.Y * math.min(T.HillAssist * carStats.Hill, 0.95) * throttle * dt
 		end
 		if input.Brake > 0 then
 			if vF > 2 then
@@ -401,18 +426,18 @@ local function step(dt: number)
 			vF = moveToward(vF, 0, T.HandbrakeDecel * dt)
 		end
 
-		local targetGrip = if state.Drifting then T.DriftGrip else T.Grip
+		local targetGrip = if state.Drifting then T.DriftGrip else T.Grip * carStats.Handling
 		currentGrip += (targetGrip - currentGrip) * blend(T.GripRecovery, dt)
 		vR *= math.exp(-currentGrip * dt)
 
 		if state.Drifting and speedAbs > 30 then
-			state.Boost = math.min(1, state.Boost + T.ChargeDriftPerSecond * dt)
+			state.Boost = math.min(1, state.Boost + T.ChargeDriftPerSecond * carStats.Charge * dt)
 		end
 
 		-- Styrning: sätt girhastigheten runt markens normal
 		local speedRatio = math.clamp(speedAbs / T.MaxSpeed, 0, 1)
 		local lowSpeedFactor = math.clamp(speedAbs / T.TurnSpeedFull, 0, 1)
-		local turn = T.TurnRate * lowSpeedFactor * (1 - (1 - T.HighSpeedTurnFactor) * speedRatio)
+		local turn = T.TurnRate * carStats.Handling * lowSpeedFactor * (1 - (1 - T.HighSpeedTurnFactor) * speedRatio)
 		if state.Drifting then
 			turn *= 1 + T.DriftTurnBonus
 		end
@@ -429,7 +454,7 @@ local function step(dt: number)
 		state.Drifting = false
 		if grounded == 0 then
 			airTime += dt
-			state.Boost = math.min(1, state.Boost + T.ChargeAirPerSecond * dt)
+			state.Boost = math.min(1, state.Boost + T.ChargeAirPerSecond * carStats.Charge * dt)
 		end
 
 		-- Luftkontroll (gir) och självrätning
