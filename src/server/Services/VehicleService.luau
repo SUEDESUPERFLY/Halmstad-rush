@@ -4,16 +4,20 @@
 -- Nätverksmodell: föraren äger bilens fysik (SetNetworkOwner) så att styrningen
 -- känns direkt. Servern litar inte blint på det: den kontrollerar hastighet och
 -- förflyttning och rättar till bilen om något ser fel ut.
+--
+-- Spökläge: alla bilar (och förare) ligger i kollisionsgruppen "Cars", som inte
+-- krockar med sig själv. Krockar mellan spelare slås på per läge i senare faser.
 
 local Players = game:GetService("Players")
+local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
-local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local CarBuilder = require(script.Parent.Parent.Vehicle.CarBuilder)
 
 local ServerLimits = VehicleConfig.Server
+local CAR_GROUP = VehicleConfig.CollisionGroup
 
 type CarRecord = {
 	Player: Player,
@@ -25,7 +29,6 @@ type CarRecord = {
 	LastCheck: number,
 	SpeedStrikes: number,
 	IgnoreChecksUntil: number,
-	LastReset: number,
 }
 
 local VehicleService = {}
@@ -43,7 +46,7 @@ local CAR_COLORS = {
 	Color3.fromRGB(250, 120, 30),
 }
 
--- Andra services (t.ex. testbanan, senare kartan) talar om var bilar ska starta.
+-- Kartan (eller testbanan) talar om var nya bilar ska starta.
 function VehicleService.SetSpawnProvider(provider: (slot: number) -> CFrame)
 	spawnProvider = provider
 end
@@ -64,12 +67,12 @@ local function claimSlot(): number
 	return slot
 end
 
-local function flatYaw(cf: CFrame): CFrame
-	local look = cf.LookVector * Vector3.new(1, 0, 1)
-	if look.Magnitude < 0.01 then
-		look = Vector3.new(0, 0, -1)
+local function setCollisionGroup(root: Instance)
+	for _, descendant in root:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.CollisionGroup = CAR_GROUP
+		end
 	end
-	return CFrame.lookAt(Vector3.zero, look.Unit)
 end
 
 -- Flyttar en bil som klienten äger. Servern tar tillfälligt över ägarskapet
@@ -89,6 +92,14 @@ local function forceMove(record: CarRecord, target: CFrame, velocity: Vector3?)
 	end)
 end
 
+local function flatYaw(cf: CFrame): CFrame
+	local look = cf.LookVector * Vector3.new(1, 0, 1)
+	if look.Magnitude < 0.01 then
+		look = Vector3.new(0, 0, -1)
+	end
+	return CFrame.lookAt(Vector3.zero, look.Unit)
+end
+
 local function destroyCar(player: Player)
 	local record = cars[player]
 	if not record then
@@ -104,10 +115,11 @@ local function seatDriver(record: CarRecord, humanoid: Humanoid)
 		return
 	end
 	local character = humanoid.Parent :: Model
-	-- Föraren ska inte påverka bilens tyngdpunkt.
+	-- Föraren ska inte påverka bilens tyngdpunkt och ska vara spöke precis som bilen.
 	for _, descendant in character:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Massless = true
+			descendant.CollisionGroup = CAR_GROUP
 		end
 	end
 	character:PivotTo(record.Seat.CFrame + Vector3.new(0, 3, 0))
@@ -130,6 +142,7 @@ local function spawnCarFor(player: Player, character: Model)
 
 	local slot = claimSlot()
 	local model = CarBuilder.Build(CAR_COLORS[(slot - 1) % #CAR_COLORS + 1], player.UserId)
+	setCollisionGroup(model)
 	local spawnCFrame = getSpawnCFrame(slot)
 	model:PivotTo(spawnCFrame)
 	model.Parent = workspace
@@ -144,7 +157,6 @@ local function spawnCarFor(player: Player, character: Model)
 		LastCheck = os.clock(),
 		SpeedStrikes = 0,
 		IgnoreChecksUntil = os.clock() + 2,
-		LastReset = 0,
 	}
 	cars[player] = record
 	record.Chassis:SetNetworkOwner(player)
@@ -170,40 +182,11 @@ local function spawnCarFor(player: Player, character: Model)
 	end)
 end
 
-local function resetCar(record: CarRecord, toSpawn: boolean)
-	local target
-	if toSpawn then
-		target = getSpawnCFrame(record.Slot)
-	else
-		local current = record.Chassis.CFrame
-		target = CFrame.new(current.Position + Vector3.new(0, 5, 0)) * flatYaw(current)
-	end
-	forceMove(record, target)
-end
-
-local function onResetRequested(player: Player)
-	local record = cars[player]
-	if not record then
-		return
-	end
-	local now = os.clock()
-	if now - record.LastReset < ServerLimits.ResetCooldown then
-		return
-	end
-	record.LastReset = now
-	resetCar(record, false)
-end
-
 local function validateCar(record: CarRecord, now: number)
 	local chassis = record.Chassis
 	local position = chassis.Position
 	local elapsed = now - record.LastCheck
 	record.LastCheck = now
-
-	if position.Y < ServerLimits.FallResetY then
-		resetCar(record, true)
-		return
-	end
 
 	if now < record.IgnoreChecksUntil then
 		record.LastPosition = position
@@ -231,8 +214,7 @@ local function validateCar(record: CarRecord, now: number)
 		if record.SpeedStrikes >= ServerLimits.SpeedStrikesBeforeCorrection then
 			warn(("[VehicleService] %s körde %.0f studs/s, bromsar"):format(record.Player.Name, horizontalSpeed))
 			record.SpeedStrikes = 0
-			local capped = velocity.Unit * ServerLimits.HorizontalSpeedCap * 0.8
-			forceMove(record, chassis.CFrame, capped)
+			forceMove(record, chassis.CFrame, velocity.Unit * ServerLimits.HorizontalSpeedCap * 0.8)
 			return
 		end
 	else
@@ -247,8 +229,41 @@ function VehicleService.GetCar(player: Player): Model?
 	return record and record.Model
 end
 
+-- Alla aktiva bilar, för t.ex. RespawnService. Ändra inte i tabellen.
+function VehicleService.GetCars(): { [Player]: Model }
+	local result = {}
+	for player, record in cars do
+		if record.Chassis.Parent then
+			result[player] = record.Model
+		end
+	end
+	return result
+end
+
+-- Flyttar spelarens bil på ett sätt som servervalideringen godkänner.
+function VehicleService.MoveCar(player: Player, target: CFrame): boolean
+	local record = cars[player]
+	if not record then
+		return false
+	end
+	forceMove(record, target)
+	return true
+end
+
+-- Ställer bilen på hjulen där den står, vänd åt samma håll.
+function VehicleService.UprightCar(player: Player): boolean
+	local record = cars[player]
+	if not record then
+		return false
+	end
+	local current = record.Chassis.CFrame
+	forceMove(record, CFrame.new(current.Position + Vector3.new(0, 5, 0)) * flatYaw(current))
+	return true
+end
+
 function VehicleService.Init()
-	Remotes.Get("ResetVehicle").OnServerEvent:Connect(onResetRequested)
+	PhysicsService:RegisterCollisionGroup(CAR_GROUP)
+	PhysicsService:CollisionGroupSetCollidable(CAR_GROUP, CAR_GROUP, false)
 end
 
 function VehicleService.Start()

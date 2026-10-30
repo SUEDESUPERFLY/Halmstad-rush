@@ -11,6 +11,8 @@ local modules = {
 	Controllers:WaitForChild("CameraController"),
 	UI:WaitForChild("HUD"),
 	UI:WaitForChild("TouchControls"),
+	UI:WaitForChild("DistrictBanner"),
+	UI:WaitForChild("LocationMenu"),
 }
 
 for _, module in modules do

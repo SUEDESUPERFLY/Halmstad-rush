@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+local Remotes = require(game:GetService("ReplicatedStorage").Shared.Remotes)
 local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
 
 local HUD = {}
@@ -13,6 +14,9 @@ local POPUP_COLORS: { [string]: Color3 } = {
 	drift = Color3.fromRGB(255, 170, 40),
 	nearmiss = Color3.fromRGB(80, 220, 255),
 	air = Color3.fromRGB(150, 255, 120),
+	respawn = Color3.fromRGB(120, 190, 255),
+	location = Color3.fromRGB(255, 255, 255),
+	info = Color3.fromRGB(220, 220, 220),
 }
 
 local gui: ScreenGui
@@ -117,6 +121,11 @@ function HUD.Start()
 		gui.Enabled = false
 	end)
 	VehicleController.Popup:Connect(showPopup)
+	Remotes.Get("Notify").OnClientEvent:Connect(function(text: unknown, kind: unknown)
+		if typeof(text) == "string" then
+			showPopup(text, if typeof(kind) == "string" then kind else "info")
+		end
+	end)
 
 	RunService.RenderStepped:Connect(function()
 		if not gui.Enabled then

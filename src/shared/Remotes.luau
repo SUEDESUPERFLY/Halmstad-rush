@@ -9,6 +9,8 @@ local Remotes = {}
 
 Remotes.Names = {
 	ResetVehicle = "ResetVehicle", -- klient -> server, inga argument
+	TeleportToLocation = "TeleportToLocation", -- klient -> server, (locationId: string)
+	Notify = "Notify", -- server -> klient, (text: string, kind: string)
 }
 
 local FOLDER_NAME = "Remotes"

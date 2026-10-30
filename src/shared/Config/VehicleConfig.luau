@@ -38,6 +38,7 @@ VehicleConfig.Tuning = {
 	DriftMinSpeed = 35,
 	DriftExitLateral = 8,
 	HandbrakeDecel = 12,
+	HillAssist = 0.6, -- andel av tyngdkraften i uppförsbacke som tas bort när man gasar (arkadkänsla)
 
 	-- Luft
 	AirYawControl = 2.0,
@@ -69,8 +70,19 @@ VehicleConfig.Server = {
 	SpeedStrikesBeforeCorrection = 3,
 	TeleportSlack = 12, -- extra studs som tolereras per kontroll
 	ResetCooldown = 1.5,
-	FallResetY = -40,
 }
+
+-- Respawn och snabbresa (RespawnService)
+VehicleConfig.Respawn = {
+	DoubleResetWindow = 4, -- tryck R två gånger inom detta antal sekunder = till närmaste väg
+	TeleportCooldown = 5,
+	CheckInterval = 0.25,
+	WaterMargin = 1, -- respawn när chassit är så här nära vattenytan
+	RoadPointSpacing = 50,
+}
+
+-- Kollisionsgrupp för bilar och förare. Krockar inte med sig själv (spökläge i fri roam).
+VehicleConfig.CollisionGroup = "Cars"
 
 -- Bilens geometri (relativt chassits centrum). Framåt = -Z.
 VehicleConfig.Geometry = {

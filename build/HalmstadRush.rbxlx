@@ -1,4 +1,4 @@
-<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Item class="ReplicatedStorage" referent="RBX00000007"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX00000006"><Properties><string name="Name">Shared</string></Properties><Item class="Folder" referent="RBX00000002"><Properties><string name="Name">Config</string></Properties><Item class="ModuleScript" referent="RBX00000001"><Properties><string name="Name">VehicleConfig</string><ProtectedString name="Source"><![CDATA[--!strict
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Item class="ReplicatedStorage" referent="RBX00000009"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX00000008"><Properties><string name="Name">Shared</string></Properties><Item class="Folder" referent="RBX00000002"><Properties><string name="Name">Config</string></Properties><Item class="ModuleScript" referent="RBX00000001"><Properties><string name="Name">VehicleConfig</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Alla siffror som styr bilens känsla. Justera här, inte i fysikkoden.
 -- Enheter: studs, sekunder. 1 stud/s ≈ 1 km/h i HUD:en (1 stud ≈ 0,28 m).
 
@@ -38,6 +38,7 @@ VehicleConfig.Tuning = {
 	DriftMinSpeed = 35,
 	DriftExitLateral = 8,
 	HandbrakeDecel = 12,
+	HillAssist = 0.6, -- andel av tyngdkraften i uppförsbacke som tas bort när man gasar (arkadkänsla)
 
 	-- Luft
 	AirYawControl = 2.0,
@@ -69,8 +70,19 @@ VehicleConfig.Server = {
 	SpeedStrikesBeforeCorrection = 3,
 	TeleportSlack = 12, -- extra studs som tolereras per kontroll
 	ResetCooldown = 1.5,
-	FallResetY = -40,
 }
+
+-- Respawn och snabbresa (RespawnService)
+VehicleConfig.Respawn = {
+	DoubleResetWindow = 4, -- tryck R två gånger inom detta antal sekunder = till närmaste väg
+	TeleportCooldown = 5,
+	CheckInterval = 0.25,
+	WaterMargin = 1, -- respawn när chassit är så här nära vattenytan
+	RoadPointSpacing = 50,
+}
+
+-- Kollisionsgrupp för bilar och förare. Krockar inte med sig själv (spökläge i fri roam).
+VehicleConfig.CollisionGroup = "Cars"
 
 -- Bilens geometri (relativt chassits centrum). Framåt = -Z.
 VehicleConfig.Geometry = {
@@ -85,7 +97,329 @@ VehicleConfig.Geometry = {
 }
 
 return VehicleConfig
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000003"><Properties><string name="Name">Remotes</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item></Item><Item class="Folder" referent="RBX00000004"><Properties><string name="Name">Map</string></Properties><Item class="ModuleScript" referent="RBX00000003"><Properties><string name="Name">MapData</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Block-out av Halmstad. Stiliserat och komprimerat, inte en exakt karta.
+-- Koordinater i studs. X = öster, Z = söder (norr är -Z). Marken ligger på Y = 0.
+-- Delas av server (bygger kartan, respawn) och klient (platsnamn, snabbresemeny).
+--
+--   Galgberget (NV)          Norra vägen / Nissansbron
+--        \                     |
+--   Västra ringen -- Centrum (Stora torg) | Nissan | Östra Förstaden -- Kustvägen
+--        |                Slottet         |        Hamnen / industri
+--   Tylösandsvägen (landsväg väster ut)   |        Östra stranden (SO)
+--   Tylösand (långt i väster)           Havet (Laholmsbukten) i söder
+
+export type Road = {
+	Name: string,
+	Width: number,
+	Points: { Vector2 }, -- (X, Z)
+	Trees: boolean?,
+	LaneLines: boolean?,
+}
+
+export type Zone = {
+	Name: string,
+	Min: Vector2,
+	Max: Vector2,
+	Color: Color3,
+	Material: Enum.Material,
+	Layer: number, -- högre lager ritas ovanpå (undviker flimmer)
+}
+
+export type Block = {
+	Min: Vector2,
+	Max: Vector2,
+	Style: string,
+}
+
+export type BuildingStyle = {
+	CellMin: number,
+	CellMax: number,
+	MinHeight: number,
+	MaxHeight: number,
+	Gap: number, -- chans att en tomt lämnas tom (gränder och genvägar)
+	Colors: { Color3 },
+	RoofColor: Color3,
+}
+
+export type Hill = {
+	Name: string,
+	Center: Vector2,
+	FlatRadius: number,
+	Radius: number,
+	Height: number,
+	Material: Enum.Material,
+}
+
+export type Ramp = {
+	Name: string,
+	Start: Vector3, -- rampens nedre kant (mitt)
+	Yaw: number, -- grader, 0 = stiger mot norr (-Z), 90 = mot väster, -90 = mot öster, 180 = mot söder
+	Length: number,
+	Angle: number,
+	Width: number,
+}
+
+export type Location = {
+	Id: string,
+	Name: string,
+	Position: Vector3,
+	Yaw: number,
+}
+
+export type Area = {
+	Name: string,
+	Min: Vector2,
+	Max: Vector2,
+}
+
+local function v(x: number, z: number): Vector2
+	return Vector2.new(x, z)
+end
+
+local MapData = {}
+
+MapData.WaterLevel = -3
+MapData.SeaStartZ = 900
+MapData.River = { MinX = 150, MaxX = 230 } -- Nissan rinner från norr till havet
+
+-- Spelbara områden. Utanför dessa (eller i vattnet) respawnar bilen.
+MapData.Bounds = {
+	{ Min = v(-3000, -1400), Max = v(2000, 1400) }, -- Halmstad
+	{ Min = v(5200, -800), Max = v(6800, 800) }, -- testbanan från fas 1
+}
+
+MapData.TestTrackOrigin = Vector3.new(6000, 0, 0)
+
+MapData.Roads = {
+	{ Name = "Storgatan", Width = 28, Points = { v(-150, 100), v(-150, -300) } },
+	{ Name = "Brogatan", Width = 30, Points = { v(-500, 100), v(1000, 100) } },
+	{ Name = "Norra vägen", Width = 30, Points = { v(-500, -300), v(1000, -300) } },
+	{ Name = "Västra ringen", Width = 28, Points = { v(-500, -300), v(-500, 650) } },
+	{ Name = "Strandgatan", Width = 28, Points = { v(110, -300), v(110, 650) } },
+	{ Name = "Slottsgatan", Width = 26, Points = { v(-500, 350), v(110, 350) } },
+	{ Name = "Hamngatan", Width = 30, Points = { v(-500, 650), v(1000, 650) } },
+	{ Name = "Östra vägen", Width = 28, Points = { v(600, -300), v(600, 650) } },
+	{ Name = "Hamnvägen", Width = 28, Points = { v(600, 500), v(1000, 500) } },
+	{ Name = "Industrigatan", Width = 28, Points = { v(800, 100), v(800, 650) } },
+	{ Name = "Kustvägen", Width = 28, Points = { v(1000, -300), v(1000, 760), v(1950, 760) } },
+	{ Name = "Galgbergsvägen", Width = 24, Points = { v(-500, -300), v(-660, -470) } },
+	{
+		Name = "Tylösandsvägen",
+		Width = 32,
+		Points = { v(-500, 650), v(-900, 660), v(-1400, 560), v(-1900, 640), v(-2300, 720), v(-2400, 780) },
+		Trees = true,
+		LaneLines = true,
+	},
+	{ Name = "Tylösand strandväg", Width = 28, Points = { v(-2950, 780), v(-2100, 780) } },
+} :: { Road }
+
+-- Broar över Nissan: vägarna ovan går rakt över ån, här läggs räcken och pelare till.
+MapData.Bridges = {
+	{ Name = "Nissansbron", Z = -300, Width = 30 },
+	{ Name = "Österbro", Z = 100, Width = 30 },
+	{ Name = "Hamnbron", Z = 650, Width = 30 },
+}
+
+local PAVEMENT = Color3.fromRGB(150, 150, 145)
+local SAND = Color3.fromRGB(235, 215, 160)
+local QUAY = Color3.fromRGB(125, 125, 130)
+local FIELD = Color3.fromRGB(205, 190, 95)
+
+MapData.Zones = {
+	{ Name = "Centrum", Min = v(-520, -320), Max = v(150, 640), Color = PAVEMENT, Material = Enum.Material.Concrete, Layer = 1 },
+	{ Name = "Östra Förstaden", Min = v(230, -320), Max = v(1020, 640), Color = PAVEMENT, Material = Enum.Material.Concrete, Layer = 1 },
+	{ Name = "Hamnkajen", Min = v(230, 640), Max = v(1000, 900), Color = QUAY, Material = Enum.Material.Concrete, Layer = 1 },
+	{ Name = "Västra kajen", Min = v(-120, 640), Max = v(150, 900), Color = QUAY, Material = Enum.Material.Concrete, Layer = 1 },
+	{ Name = "Stora torg", Min = v(-240, 120), Max = v(-60, 240), Color = Color3.fromRGB(185, 170, 150), Material = Enum.Material.Cobblestone, Layer = 2 },
+	{ Name = "Tylösand strand", Min = v(-2950, 800), Max = v(-2100, 900), Color = SAND, Material = Enum.Material.Sand, Layer = 1 },
+	{ Name = "Östra stranden", Min = v(1040, 790), Max = v(1950, 900), Color = SAND, Material = Enum.Material.Sand, Layer = 1 },
+	{ Name = "Åker norr", Min = v(-2000, 420), Max = v(-700, 560), Color = FIELD, Material = Enum.Material.Grass, Layer = 1 },
+	{ Name = "Åker söder", Min = v(-2000, 720), Max = v(-700, 880), Color = FIELD, Material = Enum.Material.Grass, Layer = 1 },
+} :: { Zone }
+
+MapData.BuildingStyles = {
+	Town = {
+		CellMin = 36,
+		CellMax = 60,
+		MinHeight = 22,
+		MaxHeight = 48,
+		Gap = 0.08,
+		Colors = {
+			Color3.fromRGB(230, 200, 160),
+			Color3.fromRGB(210, 140, 110),
+			Color3.fromRGB(240, 225, 190),
+			Color3.fromRGB(190, 120, 100),
+			Color3.fromRGB(225, 210, 150),
+		},
+		RoofColor = Color3.fromRGB(120, 70, 60),
+	},
+	Residential = {
+		CellMin = 40,
+		CellMax = 60,
+		MinHeight = 14,
+		MaxHeight = 30,
+		Gap = 0.15,
+		Colors = {
+			Color3.fromRGB(245, 240, 230),
+			Color3.fromRGB(200, 215, 230),
+			Color3.fromRGB(235, 200, 170),
+			Color3.fromRGB(190, 210, 180),
+		},
+		RoofColor = Color3.fromRGB(80, 80, 90),
+	},
+	Warehouse = {
+		CellMin = 60,
+		CellMax = 100,
+		MinHeight = 16,
+		MaxHeight = 26,
+		Gap = 0.12,
+		Colors = {
+			Color3.fromRGB(150, 160, 170),
+			Color3.fromRGB(90, 120, 160),
+			Color3.fromRGB(170, 110, 80),
+			Color3.fromRGB(120, 130, 120),
+		},
+		RoofColor = Color3.fromRGB(70, 70, 75),
+	},
+} :: { [string]: BuildingStyle }
+
+-- Kvarter mellan vägarna (22 studs marginal från vägens mittlinje).
+MapData.Blocks = {
+	{ Min = v(-478, -278), Max = v(-172, 78), Style = "Town" },
+	{ Min = v(-128, -278), Max = v(88, 78), Style = "Town" },
+	{ Min = v(-478, 122), Max = v(-262, 328), Style = "Town" },
+	{ Min = v(-38, 122), Max = v(88, 328), Style = "Town" },
+	{ Min = v(-240, 262), Max = v(-60, 328), Style = "Town" },
+	{ Min = v(-478, 372), Max = v(-90, 628), Style = "Town" },
+	{ Min = v(-478, 672), Max = v(-142, 880), Style = "Warehouse" },
+	{ Min = v(252, -278), Max = v(578, 78), Style = "Residential" },
+	{ Min = v(622, -278), Max = v(978, 78), Style = "Residential" },
+	{ Min = v(252, 122), Max = v(578, 628), Style = "Warehouse" },
+	{ Min = v(622, 122), Max = v(778, 478), Style = "Residential" },
+	{ Min = v(822, 122), Max = v(978, 478), Style = "Residential" },
+	{ Min = v(622, 522), Max = v(778, 628), Style = "Warehouse" },
+	{ Min = v(822, 522), Max = v(978, 628), Style = "Warehouse" },
+} :: { Block }
+
+-- Kullar byggs med Terrain (mjuka backar). Regionerna får inte överlappa varandra.
+MapData.Hills = {
+	{ Name = "Galgberget", Center = v(-1000, -750), FlatRadius = 110, Radius = 420, Height = 55, Material = Enum.Material.Grass },
+	{ Name = "Puckel 1", Center = v(-1900, -450), FlatRadius = 0, Radius = 45, Height = 9, Material = Enum.Material.Ground },
+	{ Name = "Puckel 2", Center = v(-1800, -450), FlatRadius = 0, Radius = 45, Height = 9, Material = Enum.Material.Ground },
+	{ Name = "Puckel 3", Center = v(-1700, -450), FlatRadius = 0, Radius = 45, Height = 9, Material = Enum.Material.Ground },
+	{ Name = "Puckel 4", Center = v(-1600, -450), FlatRadius = 0, Radius = 45, Height = 9, Material = Enum.Material.Ground },
+	{ Name = "Puckel 5", Center = v(-1500, -450), FlatRadius = 0, Radius = 45, Height = 9, Material = Enum.Material.Ground },
+	{ Name = "Dyn T1", Center = v(-2850, 715), FlatRadius = 0, Radius = 40, Height = 7, Material = Enum.Material.Sand },
+	{ Name = "Dyn T2", Center = v(-2750, 715), FlatRadius = 0, Radius = 40, Height = 7, Material = Enum.Material.Sand },
+	{ Name = "Dyn T3", Center = v(-2650, 715), FlatRadius = 0, Radius = 40, Height = 7, Material = Enum.Material.Sand },
+	{ Name = "Dyn Ö1", Center = v(1300, 700), FlatRadius = 0, Radius = 45, Height = 7, Material = Enum.Material.Sand },
+	{ Name = "Dyn Ö2", Center = v(1500, 700), FlatRadius = 0, Radius = 45, Height = 7, Material = Enum.Material.Sand },
+	{ Name = "Dyn Ö3", Center = v(1700, 700), FlatRadius = 0, Radius = 45, Height = 7, Material = Enum.Material.Sand },
+} :: { Hill }
+
+MapData.Ramps = {
+	-- Hoppa över Nissans mynning från östra kajen. Kräver boost!
+	{ Name = "Hamnhoppet", Start = Vector3.new(290, 0, 830), Yaw = 90, Length = 44, Angle = 22, Width = 24 },
+	-- Kickers på Galgbergets topp, ut över backarna
+	{ Name = "Galgberget Syd", Start = Vector3.new(-1000, 55, -680), Yaw = 180, Length = 20, Angle = 16, Width = 20 },
+	{ Name = "Galgberget Öst", Start = Vector3.new(-930, 55, -750), Yaw = -90, Length = 20, Angle = 16, Width = 20 },
+	{ Name = "Galgberget Väst", Start = Vector3.new(-1070, 55, -750), Yaw = 90, Length = 20, Angle = 16, Width = 20 },
+	-- Ut i havet vid Östra stranden (plask = respawn)
+	{ Name = "Plaskrampen", Start = Vector3.new(1600, 0, 815), Yaw = 180, Length = 24, Angle = 18, Width = 20 },
+	-- Fältramp vid landsvägen
+	{ Name = "Åkerhoppet", Start = Vector3.new(-1150, 0, 520), Yaw = 90, Length = 30, Angle = 18, Width = 22 },
+} :: { Ramp }
+
+MapData.Landmarks = {
+	Fountain = v(-150, 180),
+	NorrePort = v(-150, -250),
+	Castle = v(0, 490),
+	LookoutTower = Vector3.new(-1000, 55, -810),
+	Hotel = v(-2480, 650),
+	Pier = { Start = v(-2500, 880), Length = 200, Width = 16 },
+	BeachHuts = { FromX = 1100, ToX = 1900, Z = 812, SkipNearX = 1600 },
+	Harbor = { Min = v(360, 690), Max = v(960, 775), CraneZ = 885, CraneXs = { 420, 620, 820 } },
+}
+
+-- Reserverad korsning för krockläget (fas 6)
+MapData.CrashJunction = v(800, 500)
+
+-- Snabbresa och respawn. Yaw i grader (0 = norr).
+MapData.Locations = {
+	{ Id = "StoraTorg", Name = "Stora torg", Position = Vector3.new(-150, 0, 215), Yaw = 0 },
+	{ Id = "NorrePort", Name = "Norre port", Position = Vector3.new(-150, 0, -180), Yaw = 0 },
+	{ Id = "Slottet", Name = "Halmstads slott", Position = Vector3.new(110, 0, 400), Yaw = 180 },
+	{ Id = "Hamnen", Name = "Hamnen", Position = Vector3.new(900, 0, 830), Yaw = 90 },
+	{ Id = "Galgberget", Name = "Galgberget", Position = Vector3.new(-560, 0, -360), Yaw = 43 },
+	{ Id = "Landsvagen", Name = "Tylösandsvägen", Position = Vector3.new(-700, 0, 655), Yaw = 90 },
+	{ Id = "Tylosand", Name = "Tylösand", Position = Vector3.new(-2300, 0, 780), Yaw = 90 },
+	{ Id = "OstraStranden", Name = "Östra stranden", Position = Vector3.new(1100, 0, 760), Yaw = -90 },
+	{ Id = "Testbanan", Name = "Testbanan", Position = Vector3.new(6000, 0, 300), Yaw = 0 },
+} :: { Location }
+
+-- Stadsdelar för namnskylten när man kör in i ett område. Första träffen gäller.
+MapData.Districts = {
+	{ Name = "Stora torg", Min = v(-240, 120), Max = v(-60, 240) },
+	{ Name = "Halmstads slott", Min = v(-100, 400), Max = v(140, 600) },
+	{ Name = "Nissan", Min = v(150, -1400), Max = v(230, 900) },
+	{ Name = "Centrum", Min = v(-520, -320), Max = v(150, 640) },
+	{ Name = "Västra kajen", Min = v(-520, 640), Max = v(150, 900) },
+	{ Name = "Hamnen", Min = v(230, 480), Max = v(1020, 900) },
+	{ Name = "Östra Förstaden", Min = v(230, -320), Max = v(1020, 480) },
+	{ Name = "Östra stranden", Min = v(1020, 560), Max = v(2000, 900) },
+	{ Name = "Galgberget", Min = v(-1450, -1200), Max = v(-560, -340) },
+	{ Name = "Puckelbanan", Min = v(-1960, -510), Max = v(-1450, -390) },
+	{ Name = "Tylösand", Min = v(-3000, 300), Max = v(-2100, 1400) },
+	{ Name = "Tylösandsvägen", Min = v(-2100, 300), Max = v(-520, 900) },
+	{ Name = "Testbanan", Min = v(5200, -800), Max = v(6800, 800) },
+} :: { Area }
+
+-- Spelarnas startplats: två rader om fem bilar på Stora torg, vända mot norr.
+function MapData.PlayerSpawn(slot: number): CFrame
+	local column = (slot - 1) % 5
+	local row = math.floor((slot - 1) / 5) % 2
+	return CFrame.new(-150 + (column - 2) * 14, 4, 215 + row * 16)
+end
+
+function MapData.LocationCFrame(location: Location): CFrame
+	return CFrame.new(location.Position + Vector3.new(0, 4, 0)) * CFrame.Angles(0, math.rad(location.Yaw), 0)
+end
+
+function MapData.FindLocation(id: string): Location?
+	for _, location in MapData.Locations do
+		if location.Id == id then
+			return location
+		end
+	end
+	return nil
+end
+
+function MapData.IsInBounds(position: Vector3): boolean
+	for _, area in MapData.Bounds do
+		if position.X >= area.Min.X and position.X <= area.Max.X and position.Z >= area.Min.Y and position.Z <= area.Max.Y then
+			return true
+		end
+	end
+	return false
+end
+
+function MapData.DistrictAt(position: Vector3): string?
+	for _, district in MapData.Districts do
+		if
+			position.X >= district.Min.X
+			and position.X <= district.Max.X
+			and position.Z >= district.Min.Y
+			and position.Z <= district.Max.Y
+		then
+			return district.Name
+		end
+	end
+	return nil
+end
+
+return MapData
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000005"><Properties><string name="Name">Remotes</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Alla RemoteEvents definieras här. Bara servern skapar dem; klienten väntar in dem.
 -- Varje handler på servern MÅSTE validera argument och takt (rate limit).
 
@@ -96,6 +430,8 @@ local Remotes = {}
 
 Remotes.Names = {
 	ResetVehicle = "ResetVehicle", -- klient -> server, inga argument
+	TeleportToLocation = "TeleportToLocation", -- klient -> server, (locationId: string)
+	Notify = "Notify", -- server -> klient, (text: string, kind: string)
 }
 
 local FOLDER_NAME = "Remotes"
@@ -129,7 +465,7 @@ function Remotes.Get(name: string): RemoteEvent
 end
 
 return Remotes
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000005"><Properties><string name="Name">Util</string></Properties><Item class="ModuleScript" referent="RBX00000004"><Properties><string name="Name">Signal</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000007"><Properties><string name="Name">Util</string></Properties><Item class="ModuleScript" referent="RBX00000006"><Properties><string name="Name">Signal</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Minimal signal för kommunikation mellan moduler på samma sida (klient eller server).
 
 export type Connection = {
@@ -171,7 +507,7 @@ function Signal.new(): Signal
 end
 
 return Signal
-]]></ProtectedString></Properties></Item></Item></Item></Item><Item class="ServerScriptService" referent="RBX0000000E"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX0000000D"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item></Item></Item></Item><Item class="ServerScriptService" referent="RBX00000015"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000014"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Serverns startpunkt. Laddar alla services i Services/, kör Init() på alla
 -- och därefter Start() på alla. Init: skapa saker och koppla ihop. Start: börja köra.
 
@@ -211,21 +547,21 @@ for name, service in services do
 end
 
 print("[Server] Halmstad Rush startad")
-]]></ProtectedString></Properties><Item class="Folder" referent="RBX0000000A"><Properties><string name="Name">Services</string></Properties><Item class="ModuleScript" referent="RBX00000008"><Properties><string name="Name">TestTrackService</string><ProtectedString name="Source"><![CDATA[--!strict
--- Fas 1: en testplatta med ramper, slalom och pelare för nära-ögat-boost.
--- Ersätts av Halmstad-kartan i fas 2 (men behålls som "TestTrack" för felsökning).
+]]></ProtectedString></Properties><Item class="Folder" referent="RBX0000000C"><Properties><string name="Name">Map</string></Properties><Item class="ModuleScript" referent="RBX0000000A"><Properties><string name="Name">Geometry</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Byggstenar för block-out: lådor, plattor, vägsegment, ramper, cylindrar och terrängkullar.
 
-local Lighting = game:GetService("Lighting")
-local ServerScriptService = game:GetService("ServerScriptService")
+local Geometry = {}
 
-local VehicleService = require(ServerScriptService.Server.Services.VehicleService)
+local MAX_PART_SIZE = 2000
 
-local TestTrackService = {}
-
-local SPAWN_Z = 300
-local track: Folder
-
-local function block(name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material?): Part
+function Geometry.Part(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cframe: CFrame,
+	color: Color3,
+	material: Enum.Material?
+): Part
 	local part = Instance.new("Part")
 	part.Name = name
 	part.Anchored = true
@@ -235,125 +571,880 @@ local function block(name: string, size: Vector3, cframe: CFrame, color: Color3,
 	part.Material = material or Enum.Material.SmoothPlastic
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
-	part.Parent = track
+	part.Parent = parent
 	return part
 end
 
--- Platta markeringar som inte påverkar körning.
-local function decal(name: string, size: Vector3, position: Vector3, color: Color3)
-	local part = block(name, size, CFrame.new(position), color)
+-- Markerar en del som "hinder": ger nära-ögat-boost när man susar förbi.
+function Geometry.Obstacle(part: BasePart): BasePart
+	part:SetAttribute("Obstacle", true)
+	return part
+end
+
+-- Visuell del som inte påverkar fysik eller raycasts.
+function Geometry.Decor(part: BasePart): BasePart
 	part.CanCollide = false
 	part.CanQuery = false
 	part.CanTouch = false
-end
-
--- Ramp som börjar i marknivå vid `start` och stiger i riktningen `yawDeg`
--- (0 = mot -Z, samma håll som bilarna startar åt).
-local function ramp(name: string, start: Vector3, yawDeg: number, length: number, angleDeg: number, width: number): Part
-	local thickness = 2
-	local yaw = CFrame.Angles(0, math.rad(yawDeg), 0)
-	local flatForward = yaw.LookVector
-	local angle = math.rad(angleDeg)
-	local slope = flatForward * math.cos(angle) + Vector3.yAxis * math.sin(angle)
-	local right = yaw.RightVector
-	local normal = right:Cross(slope).Unit
-	local surfaceMid = start + slope * (length / 2)
-	local center = surfaceMid - normal * (thickness / 2)
-	local cframe = CFrame.fromMatrix(center, slope:Cross(normal), normal)
-	local part = block(name, Vector3.new(width, thickness, length), cframe, Color3.fromRGB(240, 170, 40), Enum.Material.DiamondPlate)
 	return part
 end
 
-local function rampTop(start: Vector3, yawDeg: number, length: number, angleDeg: number): Vector3
+-- Låda från hörn till hörn. Delas upp i flera Parts om den är större än Robloxs maxstorlek.
+function Geometry.Box(
+	parent: Instance,
+	name: string,
+	min: Vector3,
+	max: Vector3,
+	color: Color3,
+	material: Enum.Material?
+): { Part }
+	local parts = {}
+	local size = max - min
+	local nx = math.max(1, math.ceil(size.X / MAX_PART_SIZE))
+	local nz = math.max(1, math.ceil(size.Z / MAX_PART_SIZE))
+	local stepX = size.X / nx
+	local stepZ = size.Z / nz
+	for ix = 0, nx - 1 do
+		for iz = 0, nz - 1 do
+			local chunkMin = Vector3.new(min.X + ix * stepX, min.Y, min.Z + iz * stepZ)
+			local chunkSize = Vector3.new(stepX, size.Y, stepZ)
+			table.insert(
+				parts,
+				Geometry.Part(parent, name, chunkSize, CFrame.new(chunkMin + chunkSize / 2), color, material)
+			)
+		end
+	end
+	return parts
+end
+
+-- Horisontell platta (zon) med given översida.
+function Geometry.Slab(
+	parent: Instance,
+	name: string,
+	min: Vector2,
+	max: Vector2,
+	topY: number,
+	color: Color3,
+	material: Enum.Material?
+): { Part }
+	return Geometry.Box(parent, name, Vector3.new(min.X, topY - 1, min.Y), Vector3.new(max.X, topY, max.Y), color, material)
+end
+
+-- Rak remsa mellan två punkter (vägsegment, vägmarkering).
+function Geometry.Strip(
+	parent: Instance,
+	name: string,
+	a: Vector2,
+	b: Vector2,
+	width: number,
+	topY: number,
+	thickness: number,
+	color: Color3,
+	material: Enum.Material?
+): Part
+	local from = Vector3.new(a.X, topY - thickness / 2, a.Y)
+	local to = Vector3.new(b.X, topY - thickness / 2, b.Y)
+	local length = (to - from).Magnitude
+	local cframe = CFrame.lookAt((from + to) / 2, to)
+	return Geometry.Part(parent, name, Vector3.new(width, thickness, length), cframe, color, material)
+end
+
+-- Stående cylinder. `base` är mitten av undersidan.
+function Geometry.Cylinder(
+	parent: Instance,
+	name: string,
+	base: Vector3,
+	radius: number,
+	height: number,
+	color: Color3,
+	material: Enum.Material?
+): Part
+	local part = Geometry.Part(
+		parent,
+		name,
+		Vector3.new(height, radius * 2, radius * 2),
+		CFrame.new(base + Vector3.new(0, height / 2, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		color,
+		material
+	)
+	part.Shape = Enum.PartType.Cylinder
+	return part
+end
+
+function Geometry.Ball(parent: Instance, name: string, center: Vector3, radius: number, color: Color3): Part
+	local part = Geometry.Part(parent, name, Vector3.one * radius * 2, CFrame.new(center), color)
+	part.Shape = Enum.PartType.Ball
+	return part
+end
+
+-- Ramp som börjar vid `start` (nedre kanten) och stiger i riktningen `yawDeg`.
+-- 0 = stiger mot -Z (norr), 90 = mot -X (väster), -90 = mot +X (öster), 180 = mot +Z (söder).
+function Geometry.Ramp(
+	parent: Instance,
+	name: string,
+	start: Vector3,
+	yawDeg: number,
+	length: number,
+	angleDeg: number,
+	width: number,
+	color: Color3?,
+	material: Enum.Material?
+): Part
+	local thickness = 2
+	local yaw = CFrame.Angles(0, math.rad(yawDeg), 0)
+	local angle = math.rad(angleDeg)
+	local slope = yaw.LookVector * math.cos(angle) + Vector3.yAxis * math.sin(angle)
+	local normal = yaw.RightVector:Cross(slope).Unit
+	local center = start + slope * (length / 2) - normal * (thickness / 2)
+	local cframe = CFrame.fromMatrix(center, slope:Cross(normal), normal)
+	return Geometry.Part(
+		parent,
+		name,
+		Vector3.new(width, thickness, length),
+		cframe,
+		color or Color3.fromRGB(240, 170, 40),
+		material or Enum.Material.DiamondPlate
+	)
+end
+
+function Geometry.RampTop(start: Vector3, yawDeg: number, length: number, angleDeg: number): Vector3
 	local flatForward = CFrame.Angles(0, math.rad(yawDeg), 0).LookVector
 	local angle = math.rad(angleDeg)
 	return start + flatForward * length * math.cos(angle) + Vector3.yAxis * length * math.sin(angle)
 end
 
-local function obstacle(part: BasePart)
-	part:SetAttribute("Obstacle", true)
-end
+-- Mjuk kulle i Terrain: platt topp inom flatRadius, cosinus-sluttning ut till radius.
+function Geometry.TerrainHill(center: Vector2, flatRadius: number, radius: number, height: number, material: Enum.Material)
+	local terrain = workspace.Terrain
+	local resolution = 4
+	local region = Region3.new(
+		Vector3.new(center.X - radius, 0, center.Y - radius),
+		Vector3.new(center.X + radius, height + resolution, center.Y + radius)
+	):ExpandToGrid(resolution)
+	local regionMin = region.CFrame.Position - region.Size / 2
+	local countX = math.floor(region.Size.X / resolution + 0.5)
+	local countY = math.floor(region.Size.Y / resolution + 0.5)
+	local countZ = math.floor(region.Size.Z / resolution + 0.5)
 
-local function build()
-	track = Instance.new("Folder")
-	track.Name = "TestTrack"
-	track.Parent = workspace
-
-	local asphalt = Color3.fromRGB(70, 72, 78)
-	block("Ground", Vector3.new(1600, 4, 1600), CFrame.new(0, -2, 0), asphalt, Enum.Material.Asphalt)
-
-	-- Raksträcka med mittlinje från start mot norr (-Z)
-	for z = SPAWN_Z - 40, -700, -30 do
-		decal("LaneLine", Vector3.new(1, 0.05, 14), Vector3.new(0, 0.03, z), Color3.new(1, 1, 1))
+	local function heightAt(x: number, z: number): number
+		local r = math.sqrt((x - center.X) ^ 2 + (z - center.Y) ^ 2)
+		if r <= flatRadius then
+			return height
+		elseif r >= radius then
+			return 0
+		end
+		local t = (r - flatRadius) / (radius - flatRadius)
+		return height * (0.5 + 0.5 * math.cos(math.pi * t))
 	end
 
+	local materials = table.create(countX)
+	local occupancies = table.create(countX)
+	for ix = 1, countX do
+		local x = regionMin.X + (ix - 0.5) * resolution
+		local matX = table.create(countY)
+		local occX = table.create(countY)
+		for iy = 1, countY do
+			matX[iy] = table.create(countZ)
+			occX[iy] = table.create(countZ)
+		end
+		for iz = 1, countZ do
+			local z = regionMin.Z + (iz - 0.5) * resolution
+			local surface = heightAt(x, z)
+			for iy = 1, countY do
+				local y0 = regionMin.Y + (iy - 1) * resolution
+				local occupancy = math.clamp((surface - y0) / resolution, 0, 1)
+				matX[iy][iz] = if occupancy > 0 then material else Enum.Material.Air
+				occX[iy][iz] = occupancy
+			end
+		end
+		materials[ix] = matX
+		occupancies[ix] = occX
+	end
+
+	terrain:WriteVoxels(region, resolution, materials, occupancies)
+end
+
+return Geometry
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000B"><Properties><string name="Name">Landmarks</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Igenkännbara platser i block-out-form: slottet, Norre port, fontänen på Stora torg,
+-- utsiktstornet på Galgberget, strandhotellet, badbryggan, hamnen och strandbodar.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local MapData = require(ReplicatedStorage.Shared.Map.MapData)
+local Geometry = require(script.Parent.Geometry)
+
+local Landmarks = {}
+
+local STONE = Color3.fromRGB(205, 170, 140)
+local COPPER = Color3.fromRGB(95, 150, 125)
+local WATER = Color3.fromRGB(70, 140, 200)
+local WOOD = Color3.fromRGB(150, 110, 70)
+
+local function folder(parent: Instance, name: string): Folder
+	local f = Instance.new("Folder")
+	f.Name = name
+	f.Parent = parent
+	return f
+end
+
+function Landmarks.Fountain(parent: Instance, at: Vector2)
+	local f = folder(parent, "Fontanen")
+	local base = Vector3.new(at.X, 0.08, at.Y)
+	Geometry.Obstacle(Geometry.Cylinder(f, "Basin", base, 14, 2, Color3.fromRGB(170, 170, 175), Enum.Material.Concrete))
+	Geometry.Decor(Geometry.Cylinder(f, "Water", base + Vector3.new(0, 2, 0), 12.5, 0.2, WATER, Enum.Material.Glass))
+	Geometry.Obstacle(Geometry.Cylinder(f, "Column", base, 2.5, 12, Color3.fromRGB(190, 190, 195), Enum.Material.Marble))
+	Geometry.Ball(f, "Statue", base + Vector3.new(0, 14, 0), 3, COPPER)
+end
+
+function Landmarks.NorrePort(parent: Instance, at: Vector2)
+	local f = folder(parent, "NorrePort")
+	local brick = Color3.fromRGB(170, 90, 70)
+	for _, side in { -1, 1 } do
+		local pillar = Geometry.Part(
+			f,
+			"Pillar",
+			Vector3.new(8, 24, 12),
+			CFrame.new(at.X + side * 19, 12, at.Y),
+			brick,
+			Enum.Material.Brick
+		)
+		Geometry.Obstacle(pillar)
+	end
+	Geometry.Part(f, "Arch", Vector3.new(46, 8, 12), CFrame.new(at.X, 28, at.Y), brick, Enum.Material.Brick)
+	Geometry.Part(f, "Roof", Vector3.new(48, 3, 14), CFrame.new(at.X, 33.5, at.Y), Color3.fromRGB(60, 60, 65))
+end
+
+function Landmarks.Castle(parent: Instance, at: Vector2)
+	local f = folder(parent, "Slottet")
+	local width, depth, height = 120, 140, 30
+	local body = Geometry.Part(
+		f,
+		"Body",
+		Vector3.new(width - 20, height, depth - 20),
+		CFrame.new(at.X, height / 2, at.Y),
+		STONE,
+		Enum.Material.Brick
+	)
+	Geometry.Obstacle(body)
+	Geometry.Part(f, "Roof", Vector3.new(width - 16, 4, depth - 16), CFrame.new(at.X, height + 2, at.Y), COPPER)
+	for _, sx in { -1, 1 } do
+		for _, sz in { -1, 1 } do
+			local base = Vector3.new(at.X + sx * (width / 2 - 12), 0, at.Y + sz * (depth / 2 - 12))
+			Geometry.Obstacle(Geometry.Cylinder(f, "Tower", base, 12, 44, STONE, Enum.Material.Brick))
+			Geometry.Ball(f, "TowerRoof", base + Vector3.new(0, 46, 0), 11, COPPER)
+		end
+	end
+end
+
+function Landmarks.LookoutTower(parent: Instance, base: Vector3)
+	local f = folder(parent, "Utsiktstornet")
+	local tower = Geometry.Part(
+		f,
+		"Tower",
+		Vector3.new(14, 44, 14),
+		CFrame.new(base + Vector3.new(0, 19, 0)),
+		Color3.fromRGB(200, 195, 185),
+		Enum.Material.Concrete
+	)
+	Geometry.Obstacle(tower)
+	Geometry.Part(f, "Deck", Vector3.new(22, 2, 22), CFrame.new(base + Vector3.new(0, 42, 0)), WOOD, Enum.Material.WoodPlanks)
+	Geometry.Part(f, "Flag", Vector3.new(0.5, 10, 0.5), CFrame.new(base + Vector3.new(0, 48, 0)), Color3.new(1, 1, 1))
+end
+
+function Landmarks.Hotel(parent: Instance, at: Vector2)
+	local f = folder(parent, "Strandhotellet")
+	local body = Geometry.Part(
+		f,
+		"Body",
+		Vector3.new(160, 36, 60),
+		CFrame.new(at.X, 18, at.Y),
+		Color3.fromRGB(245, 245, 240),
+		Enum.Material.Concrete
+	)
+	Geometry.Obstacle(body)
+	Geometry.Part(f, "Roof", Vector3.new(164, 2, 64), CFrame.new(at.X, 37, at.Y), Color3.fromRGB(60, 110, 160))
+	Geometry.Part(f, "Sign", Vector3.new(60, 6, 1), CFrame.new(at.X, 30, at.Y + 30.6), Color3.fromRGB(60, 110, 160), Enum.Material.Neon)
+end
+
+function Landmarks.Pier(parent: Instance, start: Vector2, length: number, width: number)
+	local f = folder(parent, "Badbryggan")
+	Geometry.Box(
+		f,
+		"Deck",
+		Vector3.new(start.X - width / 2, -0.5, start.Y),
+		Vector3.new(start.X + width / 2, 0.5, start.Y + length),
+		WOOD,
+		Enum.Material.WoodPlanks
+	)
+	for z = start.Y + 30, start.Y + length, 30 do
+		for _, side in { -1, 1 } do
+			Geometry.Cylinder(f, "Post", Vector3.new(start.X + side * (width / 2 - 1), -15, z), 1, 15, WOOD, Enum.Material.Wood)
+		end
+	end
+end
+
+function Landmarks.BeachHuts(parent: Instance, fromX: number, toX: number, z: number, skipNearX: number, rng: Random)
+	local f = folder(parent, "Strandbodar")
+	local colors = {
+		Color3.fromRGB(240, 90, 90),
+		Color3.fromRGB(90, 170, 240),
+		Color3.fromRGB(250, 210, 60),
+		Color3.fromRGB(120, 210, 120),
+		Color3.new(1, 1, 1),
+	}
+	for x = fromX, toX, 50 do
+		if math.abs(x - skipNearX) > 30 then
+			local hut = Geometry.Part(
+				f,
+				"Hut",
+				Vector3.new(7, 7, 7),
+				CFrame.new(x, 3.5, z),
+				colors[rng:NextInteger(1, #colors)],
+				Enum.Material.WoodPlanks
+			)
+			Geometry.Obstacle(hut)
+		end
+	end
+end
+
+function Landmarks.Harbor(parent: Instance, rng: Random)
+	local data = MapData.Landmarks.Harbor
+	local f = folder(parent, "Hamnen")
+	local colors = {
+		Color3.fromRGB(200, 60, 50),
+		Color3.fromRGB(40, 100, 180),
+		Color3.fromRGB(230, 160, 30),
+		Color3.fromRGB(60, 150, 90),
+		Color3.fromRGB(130, 130, 140),
+	}
+
+	-- Containerstaplar i rader med gränder emellan
+	for x = data.Min.X, data.Max.X, 30 do
+		for z = data.Min.Y, data.Max.Y, 28 do
+			if rng:NextNumber() > 0.25 then
+				local stack = rng:NextInteger(1, 3)
+				for level = 0, stack - 1 do
+					local container = Geometry.Part(
+						f,
+						"Container",
+						Vector3.new(20, 8.5, 8),
+						CFrame.new(x, 4.25 + level * 8.5, z),
+						colors[rng:NextInteger(1, #colors)],
+						Enum.Material.CorrodedMetal
+					)
+					Geometry.Obstacle(container)
+				end
+			end
+		end
+	end
+
+	-- Kranar vid kajkanten
+	local craneColor = Color3.fromRGB(240, 180, 30)
+	for _, x in data.CraneXs do
+		for _, dx in { -10, 10 } do
+			for _, dz in { -7, 7 } do
+				local leg = Geometry.Part(
+					f,
+					"CraneLeg",
+					Vector3.new(2, 44, 2),
+					CFrame.new(x + dx, 22, data.CraneZ + dz),
+					craneColor,
+					Enum.Material.Metal
+				)
+				Geometry.Obstacle(leg)
+			end
+		end
+		Geometry.Part(f, "CraneTop", Vector3.new(24, 5, 70), CFrame.new(x, 46, data.CraneZ + 10), craneColor, Enum.Material.Metal)
+	end
+end
+
+-- Fyller ett kvarter med hus i rutnät. Tomma tomter blir gränder att köra igenom.
+function Landmarks.FillBlock(parent: Instance, block: MapData.Block, rng: Random)
+	local style = MapData.BuildingStyles[block.Style]
+	assert(style, "Okänd husstil: " .. block.Style)
+	local minX, maxX = block.Min.X, block.Max.X
+	local minZ, maxZ = block.Min.Y, block.Max.Y
+
+	local function nextSize(position: number, limit: number): number
+		local size = rng:NextNumber(style.CellMin, style.CellMax)
+		if limit - (position + size) < style.CellMin * 0.6 then
+			size = limit - position
+		end
+		return size
+	end
+
+	local x = minX
+	while maxX - x > 8 do
+		local w = nextSize(x, maxX)
+		local z = minZ
+		while maxZ - z > 8 do
+			local d = nextSize(z, maxZ)
+			if rng:NextNumber() > style.Gap then
+				local height = rng:NextNumber(style.MinHeight, style.MaxHeight)
+				local center = Vector3.new(x + w / 2, height / 2, z + d / 2)
+				local building = Geometry.Part(
+					parent,
+					"Building",
+					Vector3.new(w - 6, height, d - 6),
+					CFrame.new(center),
+					style.Colors[rng:NextInteger(1, #style.Colors)],
+					Enum.Material.Concrete
+				)
+				Geometry.Obstacle(building)
+				Geometry.Part(
+					parent,
+					"Roof",
+					Vector3.new(w - 5, 1, d - 5),
+					CFrame.new(center.X, height + 0.5, center.Z),
+					style.RoofColor
+				)
+			end
+			z += d
+		end
+		x += w
+	end
+end
+
+return Landmarks
+]]></ProtectedString></Properties></Item></Item><Item class="Folder" referent="RBX00000011"><Properties><string name="Name">Services</string></Properties><Item class="ModuleScript" referent="RBX0000000D"><Properties><string name="Name">MapService</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Bygger block-out-kartan över Halmstad från MapData när servern startar.
+
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local MapData = require(ReplicatedStorage.Shared.Map.MapData)
+local Geometry = require(script.Parent.Parent.Map.Geometry)
+local Landmarks = require(script.Parent.Parent.Map.Landmarks)
+local VehicleService = require(script.Parent.VehicleService)
+
+local MapService = {}
+
+local MAP_SEED = 1307 -- samma frö = samma stad varje gång
+
+local GRASS = Color3.fromRGB(106, 160, 80)
+local ASPHALT = Color3.fromRGB(60, 62, 68)
+local WATER = Color3.fromRGB(50, 120, 190)
+local SEABED = Color3.fromRGB(190, 175, 130)
+
+local ZONE_LAYER_HEIGHT = 0.04
+local ROAD_TOP = 0.16
+local MARKING_TOP = 0.2
+
+local function folder(parent: Instance, name: string): Folder
+	local f = Instance.new("Folder")
+	f.Name = name
+	f.Parent = parent
+	return f
+end
+
+local function buildGroundAndWater(map: Folder)
+	local ground = folder(map, "Ground")
+	local river = MapData.River
+	local seaZ = MapData.SeaStartZ
+	local bounds = MapData.Bounds[1]
+	local minX, maxX = bounds.Min.X, bounds.Max.X
+	local minZ, maxZ = bounds.Min.Y, bounds.Max.Y
+
+	-- Land väster och öster om Nissan
+	Geometry.Box(ground, "Land", Vector3.new(minX, -15, minZ), Vector3.new(river.MinX, 0, seaZ), GRASS, Enum.Material.Grass)
+	Geometry.Box(ground, "Land", Vector3.new(river.MaxX, -15, minZ), Vector3.new(maxX, 0, seaZ), GRASS, Enum.Material.Grass)
+
+	-- Botten under vattnet
+	Geometry.Box(ground, "Seabed", Vector3.new(minX, -30, seaZ), Vector3.new(maxX, -15, maxZ), SEABED, Enum.Material.Sand)
+	Geometry.Box(ground, "Riverbed", Vector3.new(river.MinX, -30, minZ), Vector3.new(river.MaxX, -15, seaZ), SEABED, Enum.Material.Sand)
+
+	-- Vattenytor (går att köra igenom; respawn sker under vattenytan)
+	local water = folder(map, "Water")
+	local level = MapData.WaterLevel
+	for _, part in Geometry.Box(water, "Sea", Vector3.new(minX, level - 1, seaZ), Vector3.new(maxX, level, maxZ), WATER, Enum.Material.Glass) do
+		part.Transparency = 0.3
+		Geometry.Decor(part)
+	end
+	for _, part in
+		Geometry.Box(water, "Nissan", Vector3.new(river.MinX, level - 1, minZ), Vector3.new(river.MaxX, level, seaZ), WATER, Enum.Material.Glass)
+	do
+		part.Transparency = 0.3
+		Geometry.Decor(part)
+	end
+end
+
+local function buildZones(map: Folder)
+	local zones = folder(map, "Zones")
+	for _, zone in MapData.Zones do
+		Geometry.Slab(zones, zone.Name, zone.Min, zone.Max, zone.Layer * ZONE_LAYER_HEIGHT, zone.Color, zone.Material)
+	end
+end
+
+local function addTrees(parent: Instance, a: Vector2, b: Vector2, offset: number, rng: Random)
+	local direction = (b - a).Unit
+	local side = Vector2.new(-direction.Y, direction.X)
+	local length = (b - a).Magnitude
+	for distance = 40, length - 40, 45 do
+		for _, sign in { -1, 1 } do
+			if rng:NextNumber() > 0.2 then
+				local p = a + direction * distance + side * sign * (offset + rng:NextNumber(0, 10))
+				local trunk = Geometry.Cylinder(parent, "TreeTrunk", Vector3.new(p.X, 0, p.Y), 1.2, 10, Color3.fromRGB(110, 80, 55), Enum.Material.Wood)
+				Geometry.Obstacle(trunk)
+				Geometry.Ball(parent, "TreeCrown", Vector3.new(p.X, 13, p.Y), rng:NextNumber(5, 7), Color3.fromRGB(70, 140, 70))
+			end
+		end
+	end
+end
+
+local function buildRoads(map: Folder, rng: Random)
+	local roads = folder(map, "Roads")
+	local trees = folder(map, "Trees")
+	for _, road in MapData.Roads do
+		local roadFolder = folder(roads, road.Name)
+		for i, point in road.Points do
+			-- Rund fog i varje knutpunkt så att kurvor och korsningar blir hela
+			Geometry.Cylinder(roadFolder, "Joint", Vector3.new(point.X, ROAD_TOP - 1, point.Y), road.Width / 2, 1, ASPHALT, Enum.Material.Asphalt)
+			local nextPoint = road.Points[i + 1]
+			if nextPoint then
+				Geometry.Strip(roadFolder, "Segment", point, nextPoint, road.Width, ROAD_TOP, 1, ASPHALT, Enum.Material.Asphalt)
+				if road.LaneLines then
+					local direction = (nextPoint - point).Unit
+					local length = (nextPoint - point).Magnitude
+					for distance = 20, length - 20, 30 do
+						local a = point + direction * distance
+						local line = Geometry.Strip(roadFolder, "LaneLine", a, a + direction * 12, 1, MARKING_TOP, 0.1, Color3.new(1, 1, 1))
+						Geometry.Decor(line)
+					end
+				end
+				if road.Trees then
+					addTrees(trees, point, nextPoint, road.Width / 2 + 6, rng)
+				end
+			end
+		end
+	end
+end
+
+local function buildBridges(map: Folder)
+	local bridges = folder(map, "Bridges")
+	local river = MapData.River
+	local railColor = Color3.fromRGB(220, 220, 225)
+	for _, bridge in MapData.Bridges do
+		local f = folder(bridges, bridge.Name)
+		local length = river.MaxX - river.MinX + 20
+		local centerX = (river.MinX + river.MaxX) / 2
+		for _, side in { -1, 1 } do
+			local rail = Geometry.Part(
+				f,
+				"Railing",
+				Vector3.new(length, 3, 1),
+				CFrame.new(centerX, ROAD_TOP + 1.5, bridge.Z + side * (bridge.Width / 2 + 0.5)),
+				railColor,
+				Enum.Material.Metal
+			)
+			Geometry.Obstacle(rail)
+		end
+		Geometry.Box(
+			f,
+			"Underside",
+			Vector3.new(river.MinX, -2, bridge.Z - bridge.Width / 2),
+			Vector3.new(river.MaxX, ROAD_TOP - 1, bridge.Z + bridge.Width / 2),
+			Color3.fromRGB(120, 120, 125),
+			Enum.Material.Concrete
+		)
+		Geometry.Cylinder(f, "Pier", Vector3.new(centerX, -15, bridge.Z), 5, 13, Color3.fromRGB(120, 120, 125), Enum.Material.Concrete)
+	end
+end
+
+local function buildBlocks(map: Folder, rng: Random)
+	local buildings = folder(map, "Buildings")
+	for _, block in MapData.Blocks do
+		Landmarks.FillBlock(buildings, block, rng)
+	end
+end
+
+local function buildHillsAndRamps(map: Folder)
+	for _, hill in MapData.Hills do
+		Geometry.TerrainHill(hill.Center, hill.FlatRadius, hill.Radius, hill.Height, hill.Material)
+	end
+	local ramps = folder(map, "Ramps")
+	for _, ramp in MapData.Ramps do
+		Geometry.Ramp(ramps, ramp.Name, ramp.Start, ramp.Yaw, ramp.Length, ramp.Angle, ramp.Width)
+	end
+end
+
+local function buildLandmarks(map: Folder, rng: Random)
+	local landmarks = folder(map, "Landmarks")
+	local data = MapData.Landmarks
+	Landmarks.Fountain(landmarks, data.Fountain)
+	Landmarks.NorrePort(landmarks, data.NorrePort)
+	Landmarks.Castle(landmarks, data.Castle)
+	Landmarks.LookoutTower(landmarks, data.LookoutTower)
+	Landmarks.Hotel(landmarks, data.Hotel)
+	Landmarks.Pier(landmarks, data.Pier.Start, data.Pier.Length, data.Pier.Width)
+	Landmarks.BeachHuts(landmarks, data.BeachHuts.FromX, data.BeachHuts.ToX, data.BeachHuts.Z, data.BeachHuts.SkipNearX, rng)
+	Landmarks.Harbor(landmarks, rng)
+end
+
+local function buildSpawn(map: Folder)
 	local spawn = Instance.new("SpawnLocation")
-	spawn.Name = "Spawn"
+	spawn.Name = "PlayerSpawn"
 	spawn.Anchored = true
-	spawn.Size = Vector3.new(12, 1, 12)
-	spawn.CFrame = CFrame.new(0, 0.5, SPAWN_Z + 60)
+	spawn.Size = Vector3.new(10, 1, 10)
+	spawn.CFrame = CFrame.new(-200, 0.5, 225)
 	spawn.Neutral = true
 	spawn.Duration = 0
-	spawn.Color = Color3.fromRGB(60, 160, 255)
-	spawn.Parent = track
+	spawn.Transparency = 1
+	spawn.CanCollide = false
+	spawn.CanQuery = false
+	spawn.Parent = map
+end
 
-	-- 1) Liten kicker rakt fram
-	ramp("Kicker", Vector3.new(0, 0, 150), 0, 18, 15, 20)
+function MapService.Init()
+	Lighting.ClockTime = 14.5
+	Lighting.Brightness = 2
+	Lighting.OutdoorAmbient = Color3.fromRGB(140, 140, 150)
+
+	local started = os.clock()
+	local rng = Random.new(MAP_SEED)
+	local map = folder(workspace, "Halmstad")
+	buildGroundAndWater(map)
+	buildZones(map)
+	buildRoads(map, rng)
+	buildBridges(map)
+	buildBlocks(map, rng)
+	buildLandmarks(map, rng)
+	buildHillsAndRamps(map)
+	buildSpawn(map)
+
+	VehicleService.SetSpawnProvider(MapData.PlayerSpawn)
+	print(("[MapService] Halmstad byggt på %.2f s"):format(os.clock() - started))
+end
+
+function MapService.Start() end
+
+return MapService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000E"><Properties><string name="Name">RespawnService</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Respawn-systemet:
+--  * R / ↻: ställ bilen på hjulen där den står. Två tryck inom några sekunder = till närmaste väg.
+--  * Automatiskt till närmaste väg om bilen hamnar i vattnet eller utanför kartan.
+--  * Snabbresa till namngivna platser (MapData.Locations), med cooldown.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local MapData = require(ReplicatedStorage.Shared.Map.MapData)
+local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local VehicleService = require(script.Parent.VehicleService)
+
+local Settings = VehicleConfig.Respawn
+
+export type RespawnPoint = {
+	Position: Vector3,
+	Yaw: number, -- grader, 0 = norr
+}
+
+local RespawnService = {}
+
+local points: { RespawnPoint } = {}
+local lastReset: { [Player]: number } = {}
+local lastTeleport: { [Player]: number } = {}
+local notifyRemote: RemoteEvent
+
+local function yawFromDirection(direction: Vector2): number
+	-- LookVector för yaw θ är (-sin θ, 0, -cos θ)
+	return math.deg(math.atan2(-direction.X, -direction.Y))
+end
+
+local function pointCFrame(point: RespawnPoint): CFrame
+	return CFrame.new(point.Position + Vector3.new(0, 4, 0)) * CFrame.Angles(0, math.rad(point.Yaw), 0)
+end
+
+function RespawnService.AddPoints(newPoints: { RespawnPoint })
+	for _, point in newPoints do
+		table.insert(points, point)
+	end
+end
+
+function RespawnService.FindNearest(position: Vector3): RespawnPoint?
+	local best: RespawnPoint? = nil
+	local bestDistance = math.huge
+	for _, point in points do
+		local distance = (point.Position - position).Magnitude
+		if distance < bestDistance then
+			best = point
+			bestDistance = distance
+		end
+	end
+	return best
+end
+
+function RespawnService.RespawnOnRoad(player: Player, message: string?)
+	local car = VehicleService.GetCar(player)
+	if not car or not car.PrimaryPart then
+		return
+	end
+	local point = RespawnService.FindNearest(car.PrimaryPart.Position)
+	local target = if point then pointCFrame(point) else MapData.PlayerSpawn(1)
+	VehicleService.MoveCar(player, target)
+	if message then
+		notifyRemote:FireClient(player, message, "respawn")
+	end
+end
+
+local function buildRoadPoints()
+	for _, road in MapData.Roads do
+		for i = 1, #road.Points - 1 do
+			local a = road.Points[i]
+			local b = road.Points[i + 1]
+			local direction = (b - a).Unit
+			local length = (b - a).Magnitude
+			local yaw = yawFromDirection(direction)
+			for distance = 0, length, Settings.RoadPointSpacing do
+				local p = a + direction * distance
+				table.insert(points, { Position = Vector3.new(p.X, 0, p.Y), Yaw = yaw })
+			end
+		end
+	end
+end
+
+local function onResetRequested(player: Player)
+	local now = os.clock()
+	local previous = lastReset[player] or -math.huge
+	if now - previous < VehicleConfig.Server.ResetCooldown then
+		return
+	end
+	lastReset[player] = now
+	if now - previous < Settings.DoubleResetWindow then
+		RespawnService.RespawnOnRoad(player, "Back on the road")
+	else
+		VehicleService.UprightCar(player)
+	end
+end
+
+local function onTeleportRequested(player: Player, locationId: unknown)
+	if typeof(locationId) ~= "string" or #locationId > 40 then
+		return
+	end
+	local location = MapData.FindLocation(locationId)
+	if not location then
+		return
+	end
+	local now = os.clock()
+	if now - (lastTeleport[player] or -math.huge) < Settings.TeleportCooldown then
+		notifyRemote:FireClient(player, "Wait a moment…", "info")
+		return
+	end
+	lastTeleport[player] = now
+	if VehicleService.MoveCar(player, MapData.LocationCFrame(location)) then
+		notifyRemote:FireClient(player, location.Name, "location")
+	end
+end
+
+function RespawnService.Init()
+	notifyRemote = Remotes.Get("Notify")
+	buildRoadPoints()
+	Remotes.Get("ResetVehicle").OnServerEvent:Connect(onResetRequested)
+	Remotes.Get("TeleportToLocation").OnServerEvent:Connect(onTeleportRequested)
+end
+
+function RespawnService.Start()
+	game:GetService("Players").PlayerRemoving:Connect(function(player)
+		lastReset[player] = nil
+		lastTeleport[player] = nil
+	end)
+
+	local accumulator = 0
+	RunService.Heartbeat:Connect(function(dt)
+		accumulator += dt
+		if accumulator < Settings.CheckInterval then
+			return
+		end
+		accumulator = 0
+		for player, car in VehicleService.GetCars() do
+			local chassis = car.PrimaryPart
+			if chassis then
+				local position = chassis.Position
+				if position.Y < MapData.WaterLevel + Settings.WaterMargin then
+					RespawnService.RespawnOnRoad(player, "SPLASH!")
+				elseif not MapData.IsInBounds(position) then
+					RespawnService.RespawnOnRoad(player, "Out of bounds")
+				end
+			end
+		end
+	end)
+end
+
+return RespawnService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">TestTrackService</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Testplattan från fas 1, flyttad till MapData.TestTrackOrigin (öster om Halmstad).
+-- Nås via snabbresemenyn ("Testbanan"). Bra för att finjustera bilens känsla.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local MapData = require(ReplicatedStorage.Shared.Map.MapData)
+local Geometry = require(script.Parent.Parent.Map.Geometry)
+local RespawnService = require(script.Parent.RespawnService)
+
+local TestTrackService = {}
+
+local SPAWN_Z = 300
+
+local function build(): Model
+	local track = Instance.new("Model")
+	track.Name = "TestTrack"
+
+	local asphalt = Color3.fromRGB(70, 72, 78)
+	Geometry.Part(track, "Ground", Vector3.new(1600, 4, 1600), CFrame.new(0, -2, 0), asphalt, Enum.Material.Asphalt)
+
+	for z = SPAWN_Z - 40, -700, -30 do
+		Geometry.Decor(Geometry.Part(track, "LaneLine", Vector3.new(1, 0.05, 14), CFrame.new(0, 0.03, z), Color3.new(1, 1, 1)))
+	end
+
+	-- 1) Liten kicker
+	Geometry.Ramp(track, "Kicker", Vector3.new(0, 0, 150), 0, 18, 15, 20)
 
 	-- 2) Table-top: upp, platå, ner
 	local upStart = Vector3.new(0, 0, -50)
-	ramp("TableUp", upStart, 0, 40, 14, 26)
-	local top = rampTop(upStart, 0, 40, 14)
+	Geometry.Ramp(track, "TableUp", upStart, 0, 40, 14, 26)
+	local top = Geometry.RampTop(upStart, 0, 40, 14)
 	local plateauLength = 40
-	block(
+	Geometry.Part(
+		track,
 		"TablePlateau",
 		Vector3.new(26, top.Y, plateauLength),
 		CFrame.new(top.X, top.Y / 2, top.Z - plateauLength / 2),
 		Color3.fromRGB(240, 170, 40),
 		Enum.Material.DiamondPlate
 	)
-	ramp("TableDown", Vector3.new(0, 0, top.Z - plateauLength - 40 * math.cos(math.rad(14))), 180, 40, 14, 26)
+	Geometry.Ramp(track, "TableDown", Vector3.new(0, 0, top.Z - plateauLength - 40 * math.cos(math.rad(14))), 180, 40, 14, 26)
 
-	-- 3) Stor hoppramp ut i luften
-	ramp("BigJump", Vector3.new(0, 0, -300), 0, 50, 22, 24)
+	-- 3) Stort hopp
+	Geometry.Ramp(track, "BigJump", Vector3.new(0, 0, -300), 0, 50, 22, 24)
 
-	-- 4) Slalom med pelare (nära-ögat-boost)
+	-- 4) Slalom med pelare
 	for i = 0, 9 do
 		local x = 150 + (i % 2) * 14 - 7
-		local pillar = block(
-			"Pillar",
-			Vector3.new(4, 16, 4),
-			CFrame.new(x, 8, 200 - i * 45),
-			Color3.fromRGB(230, 230, 235),
-			Enum.Material.Concrete
+		Geometry.Obstacle(
+			Geometry.Part(track, "Pillar", Vector3.new(4, 16, 4), CFrame.new(x, 8, 200 - i * 45), Color3.fromRGB(230, 230, 235), Enum.Material.Concrete)
 		)
-		obstacle(pillar)
 	end
 
-	-- 5) Smal "tunnel" av väggar: kör genom för nära-ögat på båda sidor
-	for _, x in { -150 - 9, -150 + 9 } do
-		local wall = block("TunnelWall", Vector3.new(2, 8, 160), CFrame.new(x, 4, 100), Color3.fromRGB(200, 60, 60), Enum.Material.Brick)
-		obstacle(wall)
+	-- 5) Smal tunnel
+	for _, x in { -159, -141 } do
+		Geometry.Obstacle(
+			Geometry.Part(track, "TunnelWall", Vector3.new(2, 8, 160), CFrame.new(x, 4, 100), Color3.fromRGB(200, 60, 60), Enum.Material.Brick)
+		)
 	end
 
 	-- 6) Driftcirkel
-	local radius = 90
 	for i = 0, 23 do
 		local a = i / 24 * math.pi * 2
-		local cone = block(
-			"Cone",
-			Vector3.new(2, 3, 2),
-			CFrame.new(-350 + math.cos(a) * radius, 1.5, -200 + math.sin(a) * radius),
-			Color3.fromRGB(255, 120, 20)
+		Geometry.Obstacle(
+			Geometry.Part(track, "Cone", Vector3.new(2, 3, 2), CFrame.new(-350 + math.cos(a) * 90, 1.5, -200 + math.sin(a) * 90), Color3.fromRGB(255, 120, 20))
 		)
-		obstacle(cone)
 	end
 
-	-- 7) Sidoramper åt öster och väster
-	ramp("SideRampEast", Vector3.new(300, 0, -100), -90, 30, 18, 20)
-	ramp("SideRampWest", Vector3.new(-300, 0, 100), 90, 30, 18, 20)
+	-- 7) Sidoramper
+	Geometry.Ramp(track, "SideRampEast", Vector3.new(300, 0, -100), -90, 30, 18, 20)
+	Geometry.Ramp(track, "SideRampWest", Vector3.new(-300, 0, 100), 90, 30, 18, 20)
 
-	-- Kanter så man ser var plattan slutar
 	for _, data in
 		{
 			{ Vector3.new(1600, 3, 3), Vector3.new(0, 1.5, -800) },
@@ -362,42 +1453,49 @@ local function build()
 			{ Vector3.new(3, 3, 1600), Vector3.new(800, 1.5, 0) },
 		}
 	do
-		block("Edge", data[1], CFrame.new(data[2]), Color3.fromRGB(255, 220, 0))
+		Geometry.Part(track, "Edge", data[1], CFrame.new(data[2]), Color3.fromRGB(255, 220, 0))
 	end
+
+	track.WorldPivot = CFrame.new()
+	track:PivotTo(CFrame.new(MapData.TestTrackOrigin))
+	track.Parent = workspace
+	return track
 end
 
 function TestTrackService.Init()
-	Lighting.ClockTime = 14
-	Lighting.Brightness = 2
 	build()
 
-	VehicleService.SetSpawnProvider(function(slot: number): CFrame
-		-- Två rader om fem, alla vända mot -Z
-		local column = (slot - 1) % 5
-		local row = math.floor((slot - 1) / 5)
-		return CFrame.new((column - 2) * 14, 4, SPAWN_Z + row * 20)
-	end)
+	-- Respawnpunkter längs mittlinjen
+	local points = {}
+	for z = SPAWN_Z, -700, -100 do
+		table.insert(points, { Position = MapData.TestTrackOrigin + Vector3.new(0, 0, z), Yaw = 0 })
+	end
+	RespawnService.AddPoints(points)
 end
 
 function TestTrackService.Start() end
 
 return TestTrackService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000009"><Properties><string name="Name">VehicleService</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">VehicleService</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Ger varje spelare en bil, sätter föraren i den och vaktar fysiken.
 --
 -- Nätverksmodell: föraren äger bilens fysik (SetNetworkOwner) så att styrningen
 -- känns direkt. Servern litar inte blint på det: den kontrollerar hastighet och
 -- förflyttning och rättar till bilen om något ser fel ut.
+--
+-- Spökläge: alla bilar (och förare) ligger i kollisionsgruppen "Cars", som inte
+-- krockar med sig själv. Krockar mellan spelare slås på per läge i senare faser.
 
 local Players = game:GetService("Players")
+local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
-local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local CarBuilder = require(script.Parent.Parent.Vehicle.CarBuilder)
 
 local ServerLimits = VehicleConfig.Server
+local CAR_GROUP = VehicleConfig.CollisionGroup
 
 type CarRecord = {
 	Player: Player,
@@ -409,7 +1507,6 @@ type CarRecord = {
 	LastCheck: number,
 	SpeedStrikes: number,
 	IgnoreChecksUntil: number,
-	LastReset: number,
 }
 
 local VehicleService = {}
@@ -427,7 +1524,7 @@ local CAR_COLORS = {
 	Color3.fromRGB(250, 120, 30),
 }
 
--- Andra services (t.ex. testbanan, senare kartan) talar om var bilar ska starta.
+-- Kartan (eller testbanan) talar om var nya bilar ska starta.
 function VehicleService.SetSpawnProvider(provider: (slot: number) -> CFrame)
 	spawnProvider = provider
 end
@@ -448,12 +1545,12 @@ local function claimSlot(): number
 	return slot
 end
 
-local function flatYaw(cf: CFrame): CFrame
-	local look = cf.LookVector * Vector3.new(1, 0, 1)
-	if look.Magnitude < 0.01 then
-		look = Vector3.new(0, 0, -1)
+local function setCollisionGroup(root: Instance)
+	for _, descendant in root:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.CollisionGroup = CAR_GROUP
+		end
 	end
-	return CFrame.lookAt(Vector3.zero, look.Unit)
 end
 
 -- Flyttar en bil som klienten äger. Servern tar tillfälligt över ägarskapet
@@ -473,6 +1570,14 @@ local function forceMove(record: CarRecord, target: CFrame, velocity: Vector3?)
 	end)
 end
 
+local function flatYaw(cf: CFrame): CFrame
+	local look = cf.LookVector * Vector3.new(1, 0, 1)
+	if look.Magnitude < 0.01 then
+		look = Vector3.new(0, 0, -1)
+	end
+	return CFrame.lookAt(Vector3.zero, look.Unit)
+end
+
 local function destroyCar(player: Player)
 	local record = cars[player]
 	if not record then
@@ -488,10 +1593,11 @@ local function seatDriver(record: CarRecord, humanoid: Humanoid)
 		return
 	end
 	local character = humanoid.Parent :: Model
-	-- Föraren ska inte påverka bilens tyngdpunkt.
+	-- Föraren ska inte påverka bilens tyngdpunkt och ska vara spöke precis som bilen.
 	for _, descendant in character:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Massless = true
+			descendant.CollisionGroup = CAR_GROUP
 		end
 	end
 	character:PivotTo(record.Seat.CFrame + Vector3.new(0, 3, 0))
@@ -514,6 +1620,7 @@ local function spawnCarFor(player: Player, character: Model)
 
 	local slot = claimSlot()
 	local model = CarBuilder.Build(CAR_COLORS[(slot - 1) % #CAR_COLORS + 1], player.UserId)
+	setCollisionGroup(model)
 	local spawnCFrame = getSpawnCFrame(slot)
 	model:PivotTo(spawnCFrame)
 	model.Parent = workspace
@@ -528,7 +1635,6 @@ local function spawnCarFor(player: Player, character: Model)
 		LastCheck = os.clock(),
 		SpeedStrikes = 0,
 		IgnoreChecksUntil = os.clock() + 2,
-		LastReset = 0,
 	}
 	cars[player] = record
 	record.Chassis:SetNetworkOwner(player)
@@ -554,40 +1660,11 @@ local function spawnCarFor(player: Player, character: Model)
 	end)
 end
 
-local function resetCar(record: CarRecord, toSpawn: boolean)
-	local target
-	if toSpawn then
-		target = getSpawnCFrame(record.Slot)
-	else
-		local current = record.Chassis.CFrame
-		target = CFrame.new(current.Position + Vector3.new(0, 5, 0)) * flatYaw(current)
-	end
-	forceMove(record, target)
-end
-
-local function onResetRequested(player: Player)
-	local record = cars[player]
-	if not record then
-		return
-	end
-	local now = os.clock()
-	if now - record.LastReset < ServerLimits.ResetCooldown then
-		return
-	end
-	record.LastReset = now
-	resetCar(record, false)
-end
-
 local function validateCar(record: CarRecord, now: number)
 	local chassis = record.Chassis
 	local position = chassis.Position
 	local elapsed = now - record.LastCheck
 	record.LastCheck = now
-
-	if position.Y < ServerLimits.FallResetY then
-		resetCar(record, true)
-		return
-	end
 
 	if now < record.IgnoreChecksUntil then
 		record.LastPosition = position
@@ -615,8 +1692,7 @@ local function validateCar(record: CarRecord, now: number)
 		if record.SpeedStrikes >= ServerLimits.SpeedStrikesBeforeCorrection then
 			warn(("[VehicleService] %s körde %.0f studs/s, bromsar"):format(record.Player.Name, horizontalSpeed))
 			record.SpeedStrikes = 0
-			local capped = velocity.Unit * ServerLimits.HorizontalSpeedCap * 0.8
-			forceMove(record, chassis.CFrame, capped)
+			forceMove(record, chassis.CFrame, velocity.Unit * ServerLimits.HorizontalSpeedCap * 0.8)
 			return
 		end
 	else
@@ -631,8 +1707,41 @@ function VehicleService.GetCar(player: Player): Model?
 	return record and record.Model
 end
 
+-- Alla aktiva bilar, för t.ex. RespawnService. Ändra inte i tabellen.
+function VehicleService.GetCars(): { [Player]: Model }
+	local result = {}
+	for player, record in cars do
+		if record.Chassis.Parent then
+			result[player] = record.Model
+		end
+	end
+	return result
+end
+
+-- Flyttar spelarens bil på ett sätt som servervalideringen godkänner.
+function VehicleService.MoveCar(player: Player, target: CFrame): boolean
+	local record = cars[player]
+	if not record then
+		return false
+	end
+	forceMove(record, target)
+	return true
+end
+
+-- Ställer bilen på hjulen där den står, vänd åt samma håll.
+function VehicleService.UprightCar(player: Player): boolean
+	local record = cars[player]
+	if not record then
+		return false
+	end
+	local current = record.Chassis.CFrame
+	forceMove(record, CFrame.new(current.Position + Vector3.new(0, 5, 0)) * flatYaw(current))
+	return true
+end
+
 function VehicleService.Init()
-	Remotes.Get("ResetVehicle").OnServerEvent:Connect(onResetRequested)
+	PhysicsService:RegisterCollisionGroup(CAR_GROUP)
+	PhysicsService:CollisionGroupSetCollidable(CAR_GROUP, CAR_GROUP, false)
 end
 
 function VehicleService.Start()
@@ -668,7 +1777,7 @@ function VehicleService.Start()
 end
 
 return VehicleService
-]]></ProtectedString></Properties></Item></Item><Item class="Folder" referent="RBX0000000C"><Properties><string name="Name">Vehicle</string></Properties><Item class="ModuleScript" referent="RBX0000000B"><Properties><string name="Name">CarBuilder</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item></Item><Item class="Folder" referent="RBX00000013"><Properties><string name="Name">Vehicle</string></Properties><Item class="ModuleScript" referent="RBX00000012"><Properties><string name="Name">CarBuilder</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Bygger en fantasibil ("Kustpilen") av enkla Parts.
 -- Chassit är den enda kroppen med massa; allt annat är Massless och svetsat.
 -- Klienten hittar hjulen via attributen och styr fjädringen via VectorForces.
@@ -844,7 +1953,7 @@ function CarBuilder.Build(bodyColor: Color3, ownerUserId: number): Model
 end
 
 return CarBuilder
-]]></ProtectedString></Properties></Item></Item></Item></Item><Item class="StarterPlayer" referent="RBX00000018"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000017"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000016"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item></Item></Item></Item><Item class="StarterPlayer" referent="RBX00000021"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000020"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX0000001F"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Klientens startpunkt. Ordningen spelar roll: input först, sedan fordon,
 -- därefter sådant som lyssnar på fordonet (kamera och UI).
 
@@ -857,6 +1966,8 @@ local modules = {
 	Controllers:WaitForChild("CameraController"),
 	UI:WaitForChild("HUD"),
 	UI:WaitForChild("TouchControls"),
+	UI:WaitForChild("DistrictBanner"),
+	UI:WaitForChild("LocationMenu"),
 }
 
 for _, module in modules do
@@ -869,7 +1980,7 @@ end
 
 -- Börja leta efter spelarens bil först när alla lyssnare är uppkopplade.
 require(Controllers.VehicleController :: ModuleScript).Begin()
-]]></ProtectedString></Properties><Item class="Folder" referent="RBX00000012"><Properties><string name="Name">Controllers</string></Properties><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">CameraController</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties><Item class="Folder" referent="RBX00000019"><Properties><string name="Name">Controllers</string></Properties><Item class="ModuleScript" referent="RBX00000016"><Properties><string name="Name">CameraController</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Jaktkamera bakom bilen. Följer färdriktningen (så drifter syns), vidgar FOV
 -- med farten och skakar lätt vid boost.
 
@@ -971,7 +2082,7 @@ function CameraController.Start()
 end
 
 return CameraController
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">InputController</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000017"><Properties><string name="Name">InputController</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Samlar körinput från tangentbord, handkontroll och pekskärm till ett gemensamt format.
 --
 -- Tangentbord: W/S eller pilar = gas/broms (back), A/D = styr, Space = handbroms/drift,
@@ -1098,7 +2209,7 @@ function InputController.Start()
 end
 
 return InputController
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">VehicleController</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">VehicleController</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Arkadfysik för bilen spelaren kör. Körs på klienten eftersom föraren äger
 -- bilens fysik (nätverksägare). Servern vaktar hastighet och position.
 --
@@ -1147,6 +2258,8 @@ local wheels: { Wheel } = {}
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
 rayParams.RespectCanCollide = true
+-- Andra bilar är spöken: fjädringen ska inte kunna "stå" på dem.
+rayParams.CollisionGroup = VehicleConfig.CollisionGroup
 
 local state: DriveState = {
 	Speed = 0,
@@ -1388,6 +2501,10 @@ local function step(dt: number)
 		if throttle > 0 and vF < maxSpeed then
 			vF = math.min(vF + acceleration * throttle * dt, maxSpeed)
 		end
+		-- Backhjälp: i uppförsbacke tar vi bort en del av tyngdkraften när man gasar.
+		if throttle > 0 and forward.Y > 0 then
+			vF += workspace.Gravity * forward.Y * T.HillAssist * throttle * dt
+		end
 		if input.Brake > 0 then
 			if vF > 2 then
 				vF = math.max(vF - T.BrakeDeceleration * input.Brake * dt, 0)
@@ -1514,13 +2631,87 @@ function VehicleController.Begin()
 end
 
 return VehicleController
-]]></ProtectedString></Properties></Item></Item><Item class="Folder" referent="RBX00000015"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX00000013"><Properties><string name="Name">HUD</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item></Item><Item class="Folder" referent="RBX0000001E"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">DistrictBanner</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Visar stadsdelens namn stort när man kör in i ett nytt område (GTA-känsla).
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local MapData = require(ReplicatedStorage.Shared.Map.MapData)
+local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
+
+local DistrictBanner = {}
+
+local CHECK_INTERVAL = 0.5
+local SHOW_TIME = 2.5
+
+local label: TextLabel
+local currentDistrict: string? = nil
+local showToken = 0
+
+local function build()
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "DistrictBanner"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+	label = Instance.new("TextLabel")
+	label.AnchorPoint = Vector2.new(0.5, 0.5)
+	label.Position = UDim2.fromScale(0.5, 0.3)
+	label.Size = UDim2.fromOffset(700, 70)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBlack
+	label.TextSize = 54
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 0.2
+	label.TextTransparency = 1
+	label.TextStrokeColor3 = Color3.fromRGB(20, 30, 60)
+	label.Parent = gui
+end
+
+local function show(name: string)
+	showToken += 1
+	local token = showToken
+	label.Text = string.upper(name)
+	label.TextTransparency = 0
+	label.TextStrokeTransparency = 0.2
+	task.delay(SHOW_TIME, function()
+		if token ~= showToken then
+			return
+		end
+		TweenService:Create(label, TweenInfo.new(0.8), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	end)
+end
+
+function DistrictBanner.Start()
+	build()
+	task.spawn(function()
+		while true do
+			task.wait(CHECK_INTERVAL)
+			local car = VehicleController.GetCar()
+			local chassis = car and car.PrimaryPart
+			if chassis then
+				local district = MapData.DistrictAt(chassis.Position)
+				if district and district ~= currentDistrict then
+					show(district)
+				end
+				currentDistrict = district
+			end
+		end
+	end)
+end
+
+return DistrictBanner
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">HUD</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Hastighetsmätare, boost-mätare och popup-texter (DRIFT!, NEAR MISS!, AIR).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+local Remotes = require(game:GetService("ReplicatedStorage").Shared.Remotes)
 local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
 
 local HUD = {}
@@ -1529,6 +2720,9 @@ local POPUP_COLORS: { [string]: Color3 } = {
 	drift = Color3.fromRGB(255, 170, 40),
 	nearmiss = Color3.fromRGB(80, 220, 255),
 	air = Color3.fromRGB(150, 255, 120),
+	respawn = Color3.fromRGB(120, 190, 255),
+	location = Color3.fromRGB(255, 255, 255),
+	info = Color3.fromRGB(220, 220, 220),
 }
 
 local gui: ScreenGui
@@ -1633,6 +2827,11 @@ function HUD.Start()
 		gui.Enabled = false
 	end)
 	VehicleController.Popup:Connect(showPopup)
+	Remotes.Get("Notify").OnClientEvent:Connect(function(text: unknown, kind: unknown)
+		if typeof(text) == "string" then
+			showPopup(text, if typeof(kind) == "string" then kind else "info")
+		end
+	end)
 
 	RunService.RenderStepped:Connect(function()
 		if not gui.Enabled then
@@ -1648,7 +2847,133 @@ function HUD.Start()
 end
 
 return HUD
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">TouchControls</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001C"><Properties><string name="Name">LocationMenu</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Snabbresemeny: M-tangenten (eller MAP-knappen) öppnar en lista med platser.
+-- Klienten skickar bara platsens id. Servern validerar id och cooldown.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+
+local MapData = require(ReplicatedStorage.Shared.Map.MapData)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
+
+local LocationMenu = {}
+
+local gui: ScreenGui
+local panel: Frame
+local teleportRemote: RemoteEvent
+
+local function corner(parent: Instance, radius: number)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius)
+	c.Parent = parent
+end
+
+local function setOpen(open: boolean)
+	panel.Visible = open
+end
+
+local function build()
+	gui = Instance.new("ScreenGui")
+	gui.Name = "LocationMenu"
+	gui.ResetOnSpawn = false
+	gui.Enabled = false
+	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+	local toggle = Instance.new("TextButton")
+	toggle.Name = "MapButton"
+	toggle.Text = "MAP (M)"
+	toggle.Font = Enum.Font.GothamBold
+	toggle.TextSize = 18
+	toggle.TextColor3 = Color3.new(1, 1, 1)
+	toggle.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+	toggle.BackgroundTransparency = 0.3
+	toggle.Position = UDim2.fromOffset(16, 70)
+	toggle.Size = UDim2.fromOffset(110, 40)
+	toggle.Parent = gui
+	corner(toggle, 10)
+	toggle.Activated:Connect(function()
+		setOpen(not panel.Visible)
+	end)
+
+	panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.Visible = false
+	panel.Position = UDim2.fromOffset(16, 118)
+	panel.Size = UDim2.fromOffset(240, 0)
+	panel.AutomaticSize = Enum.AutomaticSize.Y
+	panel.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+	panel.BackgroundTransparency = 0.2
+	panel.Parent = gui
+	corner(panel, 12)
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 8)
+	padding.PaddingBottom = UDim.new(0, 8)
+	padding.PaddingLeft = UDim.new(0, 8)
+	padding.PaddingRight = UDim.new(0, 8)
+	padding.Parent = panel
+
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 6)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = panel
+
+	local title = Instance.new("TextLabel")
+	title.Text = "TRAVEL TO"
+	title.Font = Enum.Font.GothamBlack
+	title.TextSize = 18
+	title.TextColor3 = Color3.fromRGB(255, 190, 60)
+	title.BackgroundTransparency = 1
+	title.Size = UDim2.new(1, 0, 0, 24)
+	title.LayoutOrder = 0
+	title.Parent = panel
+
+	for index, location in MapData.Locations do
+		local button = Instance.new("TextButton")
+		button.Name = location.Id
+		button.Text = location.Name
+		button.Font = Enum.Font.GothamBold
+		button.TextSize = 18
+		button.TextColor3 = Color3.new(1, 1, 1)
+		button.BackgroundColor3 = Color3.fromRGB(45, 55, 80)
+		button.Size = UDim2.new(1, 0, 0, 36)
+		button.LayoutOrder = index
+		button.Parent = panel
+		corner(button, 8)
+		button.Activated:Connect(function()
+			teleportRemote:FireServer(location.Id)
+			setOpen(false)
+		end)
+	end
+end
+
+function LocationMenu.Start()
+	teleportRemote = Remotes.Get("TeleportToLocation")
+	build()
+
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed or not gui.Enabled then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.M or input.KeyCode == Enum.KeyCode.ButtonSelect then
+			setOpen(not panel.Visible)
+		end
+	end)
+
+	VehicleController.Entered:Connect(function()
+		gui.Enabled = true
+	end)
+	VehicleController.Exited:Connect(function()
+		gui.Enabled = false
+		setOpen(false)
+	end)
+end
+
+return LocationMenu
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001D"><Properties><string name="Name">TouchControls</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Körknappar för pekskärm. Visas bara på enheter med touch och bara när man kör.
 -- Vänster: styr vänster/höger. Höger: gas, broms, drift, boost. Uppe till höger: återställ.
 

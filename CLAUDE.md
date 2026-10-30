@@ -48,7 +48,26 @@ build/      -> byggd placefil (committas)
 - Drift: handbroms över `DriftMinSpeed` ger lågt grepp och snabbare svängning. Driften fortsätter så länge man styr och glider i sidled.
 - Boost laddas av drift, lufttid och nära-ögat (raycast i sidled mot parts med attributet `Obstacle = true`).
 - Hjulens grafik flyttas med `Motor6D.Transform` lokalt. Andra spelare ser hjulen i viloläge.
-- Bilen återställs: R / Y / ↻-knappen (servern flyttar, med cooldown), automatiskt om den ligger på taket i 2,5 s, och till startplatsen om den faller under Y = -40.
+- Backhjälp (`HillAssist`): i uppförsbacke tas en del av tyngdkraften bort när man gasar, så att man kan köra upp på Galgberget.
+- Fjädringens raycasts använder kollisionsgruppen `Cars`, så de ignorerar andra bilar (spökläge).
+
+## Kartan (fas 2)
+- All kartdata finns i `src/shared/Map/MapData.luau`: vägar (polylinjer), broar, zoner, kvarter, kullar, ramper, landmärken, platser (snabbresa) och stadsdelar (namnskylt). X = öster, Z = söder, marken på Y = 0.
+- `MapService` bygger kartan när servern startar, med hjälp av `src/server/Map/Geometry.luau` (byggstenar) och `Landmarks.luau` (slott, Norre port, fontän, torn, hotell, brygga, hamn och kvartersfyllning). Fröet `MAP_SEED` gör att staden blir likadan varje gång.
+- Höjdlager för att undvika flimmer: mark 0, zoner `Layer * 0.04`, vägar 0,16, vägmarkeringar 0,2.
+- Kullar (Galgberget, puckelbanan, dyner) byggs som Terrain med `WriteVoxels`. Kullarnas regioner får inte överlappa varandra.
+- Vattnet (Nissan och havet) består av genomskinliga parts utan kollision. Vattenytan ligger på Y = -3.
+- Testbanan från fas 1 ligger kvar vid `MapData.TestTrackOrigin` (x = 6000) och nås via snabbresemenyn.
+- Reserverad krockkorsning: `MapData.CrashJunction` (Industrigatan × Hamnvägen).
+- Parts med attributet `Obstacle` (hus, träd, räcken, containrar, pelare) ger nära-ögat-boost.
+
+## Respawn (fas 2)
+- `RespawnService` äger remotes för `ResetVehicle` och `TeleportToLocation` och skickar meddelanden till klienten via `Notify`.
+- R / ↻: ställer bilen på hjulen där den står. Ett andra tryck inom `Respawn.DoubleResetWindow` (4 s) flyttar bilen till närmaste väg.
+- Automatiskt till närmaste väg om chassit hamnar under vattenytan + 1, eller utanför `MapData.Bounds`.
+- Respawnpunkter skapas längs alla vägar var 50:e stud, med riktning längs vägen. Testbanan lägger till egna punkter.
+- Snabbresa: klienten skickar bara ett plats-id. Servern kontrollerar typ, längd, att platsen finns och en cooldown på 5 s.
+- Alla serverflyttar går via `VehicleService.MoveCar` / `UprightCar`, som tar över nätverksägarskapet en kort stund och pausar teleportkontrollen.
 
 ## Kontroller
 | | Tangentbord | Handkontroll | Touch |
@@ -58,14 +77,15 @@ build/      -> byggd placefil (committas)
 | Styr | A/D / ←→ | vänster spak | ◀ ▶ |
 | Drift | Space | X | DRIFT |
 | Boost | Shift | A | BOOST |
-| Återställ | R | Y | ↻ |
+| Återställ (2 tryck = till väg) | R | Y | ↻ |
+| Snabbresa | M | Select | MAP-knappen |
 
 ## Beslut
 | Beslut | Val |
 |---|---|
 | Leverans | Placefil (`build/HalmstadRush.rbxlx`) som laddas ner från GitHub på webben. Ingen Rojo och inget GitHub Desktop hos användaren |
 | Kartan | Block-out genereras av kod från en datamodul. Detaljer senare som `.rbxm` i `assets/` |
-| Spelarkrockar | Spöken mot varandra i fri roam. Krockar bara i race och jaktläge. NPC-bilar går alltid att krocka med |
+| Spelarkrockar | Spöken mot varandra i fri roam (kollisionsgruppen `Cars`, inte kolliderbar med sig själv, införd i fas 2). Krockar bara i race och jaktläge. NPC-bilar går alltid att krocka med |
 | Språk | Engelska som bas i UI, svensk översättning via Robloxs Localization. Platsnamn alltid på svenska |
 | Krockläge | Avskild korsning i industrizonen som bokas av en spelare åt gången |
 | Slow motion | Fejkas på klienten (krockkamera, lokala vrakdelar). Fysiken på servern saktas aldrig ner |
@@ -73,8 +93,8 @@ build/      -> byggd placefil (committas)
 
 ## Faser
 - [x] Fas 0: plan och frågor
-- [ ] Fas 1: Struktur + körbar bil med arkadfysik, drift och boost på en testplatta. Touch-kontroller. *(byggd, väntar på test)*
-- [ ] Fas 2: Block-out av Halmstad (Centrum/Stora torg/Storgatan, Nissan med broar, slottet, Tylösand, Östra stranden, Galgberget, hamn/industri, landsväg) + respawn-system
+- [x] Fas 1: Struktur + körbar bil med arkadfysik, drift och boost på en testplatta. Touch-kontroller.
+- [ ] Fas 2: Block-out av Halmstad (Centrum/Stora torg/Storgatan, Nissan med broar, slottet, Tylösand, Östra stranden, Galgberget, hamn/industri, landsväg) + respawn-system *(byggd, väntar på test)*
 - [ ] Fas 3: Krockar, takedowns, krockkamera, enkla NPC-bilar
 - [ ] Fas 4: Första racet + poäng/pengar (i minnet)
 - [ ] Fas 5: DataStore (retry, sessionslås, versionerat schema), garage, bilköp, uppgraderingar, lackering
@@ -85,3 +105,4 @@ build/      -> byggd placefil (committas)
 ## Kända begränsningar / att göra
 - Ingen Luau-linter körs i molnmiljön. Fel syns först i Studios Output-fönster.
 - Andra spelare ser inte hjulens fjädring och rotation (fixas vid behov i fas 8).
+- Kartan har inte StreamingEnabled-optimering ännu (fas 8).

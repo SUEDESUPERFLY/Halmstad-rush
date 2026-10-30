@@ -47,6 +47,8 @@ local wheels: { Wheel } = {}
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
 rayParams.RespectCanCollide = true
+-- Andra bilar är spöken: fjädringen ska inte kunna "stå" på dem.
+rayParams.CollisionGroup = VehicleConfig.CollisionGroup
 
 local state: DriveState = {
 	Speed = 0,
@@ -287,6 +289,10 @@ local function step(dt: number)
 		local throttle = if wantsBoost then 1 else input.Throttle
 		if throttle > 0 and vF < maxSpeed then
 			vF = math.min(vF + acceleration * throttle * dt, maxSpeed)
+		end
+		-- Backhjälp: i uppförsbacke tar vi bort en del av tyngdkraften när man gasar.
+		if throttle > 0 and forward.Y > 0 then
+			vF += workspace.Gravity * forward.Y * T.HillAssist * throttle * dt
 		end
 		if input.Brake > 0 then
 			if vF > 2 then
