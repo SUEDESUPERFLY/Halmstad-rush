@@ -1,0 +1,46 @@
+# Minimal Roblox-standard för selene (utan nedladdad API-dump): kända globaler, Luau-syntax.
+base: lua51
+lua_versions:
+  - luau
+globals:
+  game: { any: true }
+  workspace: { any: true }
+  script: { any: true }
+  plugin: { any: true }
+  Instance: { any: true }
+  Vector2: { any: true }
+  Vector3: { any: true }
+  CFrame: { any: true }
+  Color3: { any: true }
+  BrickColor: { any: true }
+  UDim: { any: true }
+  UDim2: { any: true }
+  Rect: { any: true }
+  Ray: { any: true }
+  Region3: { any: true }
+  RaycastParams: { any: true }
+  OverlapParams: { any: true }
+  PhysicalProperties: { any: true }
+  NumberSequence: { any: true }
+  NumberSequenceKeypoint: { any: true }
+  NumberRange: { any: true }
+  ColorSequence: { any: true }
+  ColorSequenceKeypoint: { any: true }
+  TweenInfo: { any: true }
+  Enum: { any: true }
+  Random: { any: true }
+  DateTime: { any: true }
+  Font: { any: true }
+  task: { any: true }
+  buffer: { any: true }
+  utf8: { any: true }
+  typeof: { any: true }
+  warn: { any: true }
+  tick: { any: true }
+  time: { any: true }
+  table: { any: true }
+  math: { any: true }
+  string: { any: true }
+  os: { any: true }
+  debug: { any: true }
+  coroutine: { any: true }

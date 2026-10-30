@@ -168,6 +168,7 @@ build/      -> byggd placefil (committas)
   - **Daglig belöning:** UTC-dag (`os.time() // 86400`) och streak i profilen (`Daily`). Belöningen räknas av `ShopConfig.DailyReward`.
 - **Schema v2:** `Receipts` och `Daily` har lagts till. `sanitize` fyller på standardvärden för äldre profiler.
 - **Klient:** `ShopUI` öppnas med B eller SHOP-knappen. Dagens belöning visas som en notis vid start. Konfetti visas via `Celebrate` och `EffectsController.Confetti`.
+- **Inställningar i Roblox** (publicering, API-åtkomst, max spelare, frågeformulär, pass) står som checklista i `README.md`.
 - **När du vill sälja på riktigt:** skapa passen och produkterna på create.roblox.com (spelet → Monetization) och skriv in ID:na i `ShopConfig`.
 
 ## Polering: ljud, minikarta och mobil (fas 8)
@@ -182,6 +183,7 @@ build/      -> byggd placefil (committas)
   - Data: `src/shared/Map/MinimapData.luau`, genererad av `tools/map/build_minimap.py` från `CityGrid`. Den består av rektanglar (gata, huvudgata, vatten) på 24 studs, cirka 2 200 GUI-rutor.
   - Havet och Tylösandsvägen ritas från `MapData`. Prickar visar aktiviteter, kull, racestart, andra spelare och aktuellt mål.
   - Bara kartans position uppdateras varje bildruta (`ClipsDescendants`).
+- **Övrigt i fas 8:** `SpinnerController` snurrar modeller med taggen `Spinner` (vindkraftverkens rotorer, attributet `SpinSpeed`) lokalt inom 1 500 studs. Minikartan visar nästa kontrollpunkt under race (`RaceController.NextCheckpoint`). `HelpUI` (H eller ?-knappen) visar kontrollerna och öppnas en gång vid start.
 - **Mobil och prestanda:**
   - `Workspace.StreamingEnabled` (min-radie 256, målradie 1024) sätts i `default.project.json` (`$properties`, som byggskriptet stöder för bool, int, float och sträng).
   - `VehicleService` anropar `RequestStreamAroundAsync` före långa flyttar (över 300 studs), så att marken hinner laddas.
@@ -203,6 +205,7 @@ build/      -> byggd placefil (committas)
 | Starta aktivitet (vid markören) | E | B | knappen STARTA |
 | Butik | B | – | SHOP-knappen |
 | Minikarta av/på | N | – | – |
+| Hjälp (kontroller) | H | – | ?-knappen |
 
 ## Beslut
 | Beslut | Val |
@@ -227,8 +230,8 @@ build/      -> byggd placefil (committas)
 - [ ] Fas 8: Ljud, UI, minikarta, mobiloptimering *(byggd, väntar på test)*
 
 ## Kända begränsningar / att göra
-- Ingen Luau-linter körs i molnmiljön. Fel syns först i Studios Output-fönster.
-- Andra spelare ser inte hjulens fjädring och rotation (fixas vid behov i fas 8).
+- Lint i molnmiljön: `stylua --syntax luau --check` (syntax) och `selene src` (`selene.toml`, egen std `roblox_min.yml` där Roblox-globaler bara deklareras). Ingen typkontroll (luau-lsp saknas), så typfel syns först i Studios Output-fönster. Verktygen installeras med `cargo install stylua selene` om de saknas.
+- Andra spelare ser inte hjulens fjädring och rotation.
 - Cirka 5 600 hus som Parts plus Terrain, med StreamingEnabled (fas 8). Testa på en riktig mobil innan publicering.
 - UI-språket är blandat (svenska menyer, engelska spelord som WRECKED!/TAKEDOWN!). Beslutet säger engelska med svensk översättning via Localization, så det behöver stämmas av.
 - Inget motorljud förrän ett ljud-ID läggs in i `SoundConfig.EngineId`.

@@ -1,0 +1,7 @@
+# Linter för Luau (selene). Kör: selene src
+std = "roblox_min"
+exclude = ["src/server/Map/Generated/*", "src/shared/Map/MinimapData.luau"]
+
+[lints]
+shadowing = "allow"
+unused_variable = "warn"

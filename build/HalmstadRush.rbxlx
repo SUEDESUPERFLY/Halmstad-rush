@@ -7345,7 +7345,7 @@ function CarBuilder.Paint(model: Model, color: Color3)
 end
 
 return CarBuilder
-]]></ProtectedString></Properties></Item></Item></Item></Item><Item class="StarterPlayer" referent="RBX0000004E"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000004D"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX0000004C"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item></Item></Item></Item><Item class="StarterPlayer" referent="RBX00000050"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000004F"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX0000004E"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Klientens startpunkt. Ordningen spelar roll: input först, sedan fordon,
 -- därefter sådant som lyssnar på fordonet (kamera och UI).
 
@@ -7361,6 +7361,7 @@ local modules = {
 	Controllers:WaitForChild("RaceController"),
 	Controllers:WaitForChild("ActivityController"),
 	Controllers:WaitForChild("SoundController"),
+	Controllers:WaitForChild("SpinnerController"),
 	UI:WaitForChild("HUD"),
 	UI:WaitForChild("TouchControls"),
 	UI:WaitForChild("DistrictBanner"),
@@ -7370,6 +7371,7 @@ local modules = {
 	UI:WaitForChild("ActivityUI"),
 	UI:WaitForChild("ShopUI"),
 	UI:WaitForChild("MinimapUI"),
+	UI:WaitForChild("HelpUI"),
 }
 
 for _, module in modules do
@@ -7382,7 +7384,7 @@ end
 
 -- Börja leta efter spelarens bil först när alla lyssnare är uppkopplade.
 require(Controllers.VehicleController :: ModuleScript).Begin()
-]]></ProtectedString></Properties><Item class="Folder" referent="RBX00000041"><Properties><string name="Name">Controllers</string></Properties><Item class="ModuleScript" referent="RBX00000039"><Properties><string name="Name">ActivityController</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties><Item class="Folder" referent="RBX00000042"><Properties><string name="Name">Controllers</string></Properties><Item class="ModuleScript" referent="RBX00000039"><Properties><string name="Name">ActivityController</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Klientens del av aktiviteterna (budjobb, stunts, drift, krockläget, kull):
 -- tar emot inbjudan, status och resultat från servern, visar ett ljus vid målet och
 -- håller bilen still under nedräkningar. Servern mäter och avgör allt.
@@ -8172,6 +8174,13 @@ function RaceController.Leave()
 	leaveRemote:FireServer()
 end
 
+-- Nästa kontrollpunkt (för minikartan), eller nil utanför race.
+function RaceController.NextCheckpoint(): Vector3?
+	local current = setup
+	local checkpoint = current and current.Checkpoints[passed + 1]
+	return checkpoint and checkpoint.Position
+end
+
 function RaceController.IsRacing(): boolean
 	return setup ~= nil
 end
@@ -8336,7 +8345,53 @@ function SoundController.Start()
 end
 
 return SoundController
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000040"><Properties><string name="Name">VehicleController</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000040"><Properties><string name="Name">SpinnerController</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Snurrar modeller med taggen "Spinner" (vindkraftverkens rotorer) lokalt. Servern bygger
+-- dem stillastående med `WorldPivot` i navet och attributet `SpinSpeed` (varv per sekund
+-- räknat i radianer). Långt borta snurrar de inte, för att spara prestanda.
+
+local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
+
+local SpinnerController = {}
+
+local MAX_DISTANCE = 1500
+
+local spinners: { [Model]: CFrame } = {}
+
+local function add(instance: Instance)
+	if instance:IsA("Model") then
+		spinners[instance] = instance:GetPivot()
+	end
+end
+
+function SpinnerController.Start()
+	for _, instance in CollectionService:GetTagged("Spinner") do
+		add(instance)
+	end
+	CollectionService:GetInstanceAddedSignal("Spinner"):Connect(add)
+	CollectionService:GetInstanceRemovedSignal("Spinner"):Connect(function(instance)
+		spinners[instance :: Model] = nil
+	end)
+
+	RunService.RenderStepped:Connect(function()
+		local camera = workspace.CurrentCamera
+		if not camera then
+			return
+		end
+		local now = os.clock()
+		for model, base in spinners do
+			if (base.Position - camera.CFrame.Position).Magnitude < MAX_DISTANCE then
+				local speed = model:GetAttribute("SpinSpeed")
+				local angle = now * (if typeof(speed) == "number" then speed else 1)
+				model:PivotTo(base * CFrame.Angles(0, 0, angle))
+			end
+		end
+	end)
+end
+
+return SpinnerController
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000041"><Properties><string name="Name">VehicleController</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Arkadfysik för bilen spelaren kör. Körs på klienten eftersom föraren äger
 -- bilens fysik (nätverksägare). Servern vaktar hastighet och position.
 --
@@ -8860,7 +8915,7 @@ function VehicleController.Begin()
 end
 
 return VehicleController
-]]></ProtectedString></Properties></Item></Item><Item class="Folder" referent="RBX0000004B"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX00000042"><Properties><string name="Name">ActivityUI</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item></Item><Item class="Folder" referent="RBX0000004D"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX00000043"><Properties><string name="Name">ActivityUI</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Gränssnitt för aktiviteter: startknapp vid markören, statuspanel (titel, roll, mål, tid,
 -- poäng, avbryt), nedräkning och resultattavla. Visar bara det servern skickar.
 
@@ -9126,7 +9181,7 @@ function ActivityUI.Start()
 end
 
 return ActivityUI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000043"><Properties><string name="Name">DistrictBanner</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000044"><Properties><string name="Name">DistrictBanner</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Visar stadsdelens namn stort när man kör in i ett nytt område (GTA-känsla).
 
 local Players = game:GetService("Players")
@@ -9199,7 +9254,7 @@ function DistrictBanner.Start()
 end
 
 return DistrictBanner
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000044"><Properties><string name="Name">GarageUI</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000045"><Properties><string name="Name">GarageUI</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Garagemenyn: köp bilar, byt bil, uppgradera och lackera.
 -- Visar bara det servern skickat (ProfileUpdated). Varje knapp skickar en avsikt
 -- (GarageAction) och servern avgör om den går igenom.
@@ -9559,7 +9614,7 @@ function GarageUI.Start()
 end
 
 return GarageUI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000045"><Properties><string name="Name">HUD</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000046"><Properties><string name="Name">HUD</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Hastighetsmätare, boost-mätare och popup-texter (DRIFT!, NEAR MISS!, AIR, TAKEDOWN!, WRECKED!).
 
 local Players = game:GetService("Players")
@@ -9736,7 +9791,171 @@ function HUD.Start()
 end
 
 return HUD
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000046"><Properties><string name="Name">LocationMenu</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000047"><Properties><string name="Name">HelpUI</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Hjälpruta med kontrollerna. Öppnas med H eller ?-knappen och visas en gång vid första start.
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local HelpUI = {}
+
+local ACCENT = Color3.fromRGB(255, 200, 40)
+
+-- { Vad, Tangentbord, Handkontroll, Touch }
+local ROWS = {
+	{ "Gas", "W / ↑", "RT", "GAS" },
+	{ "Broms / back", "S / ↓", "LT", "BRAKE" },
+	{ "Styr", "A D / ← →", "Vänster spak", "◀ ▶" },
+	{ "Drift", "Space", "X", "DRIFT" },
+	{ "Boost", "Shift", "A", "BOOST" },
+	{ "Återställ (2 tryck = till väg)", "R", "Y", "↻" },
+	{ "Snabbresa", "M", "Select", "MAP" },
+	{ "Starta race / aktivitet", "E", "B", "START" },
+	{ "Garage", "G", "–", "GARAGE" },
+	{ "Butik", "B", "–", "SHOP" },
+	{ "Minikarta av/på", "N", "–", "–" },
+	{ "Den här hjälpen", "H", "–", "?" },
+}
+
+local TIPS = "Drifta, flyg och kör nära hinder för att ladda boost. Knuffa trafiken tills den kvaddas för TAKEDOWN!\n"
+	.. "Gröna ringar är aktiviteter, den gula är racet. Pengar köper bilar, uppgraderingar och lack i garaget."
+
+local gui: ScreenGui
+local window: Frame
+
+local function corner(parent: Instance, radius: number)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius)
+	c.Parent = parent
+end
+
+local function cell(parent: Instance, text: string, x: number, width: number, y: number, color: Color3, bold: boolean)
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Font = if bold then Enum.Font.GothamBold else Enum.Font.Gotham
+	label.TextSize = 15
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextColor3 = color
+	label.Text = text
+	label.Position = UDim2.new(x, 0, 0, y)
+	label.Size = UDim2.new(width, -6, 0, 22)
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.Parent = parent
+end
+
+local function setOpen(open: boolean)
+	window.Visible = open
+end
+
+function HelpUI.Start()
+	local player = Players.LocalPlayer
+	gui = Instance.new("ScreenGui")
+	gui.Name = "HelpUI"
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 10
+	gui.Parent = player:WaitForChild("PlayerGui")
+
+	local toggle = Instance.new("TextButton")
+	toggle.Text = "?"
+	toggle.Font = Enum.Font.GothamBlack
+	toggle.TextSize = 22
+	toggle.TextColor3 = Color3.new(1, 1, 1)
+	toggle.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+	toggle.BackgroundTransparency = 0.3
+	toggle.Position = UDim2.fromOffset(390, 70)
+	toggle.Size = UDim2.fromOffset(40, 40)
+	toggle.Parent = gui
+	corner(toggle, 10)
+	toggle.Activated:Connect(function()
+		setOpen(not window.Visible)
+	end)
+
+	window = Instance.new("Frame")
+	window.AnchorPoint = Vector2.new(0.5, 0.5)
+	window.Position = UDim2.fromScale(0.5, 0.5)
+	window.Size = UDim2.fromScale(0.8, 0.8)
+	window.BackgroundColor3 = Color3.fromRGB(18, 20, 30)
+	window.Visible = false
+	window.Parent = gui
+	corner(window, 16)
+	local constraint = Instance.new("UISizeConstraint")
+	constraint.MaxSize = Vector2.new(720, 520)
+	constraint.Parent = window
+
+	local title = Instance.new("TextLabel")
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBlack
+	title.TextSize = 24
+	title.TextColor3 = ACCENT
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Text = "HALMSTAD RUSH – KONTROLLER"
+	title.Position = UDim2.fromOffset(18, 10)
+	title.Size = UDim2.new(1, -80, 0, 36)
+	title.Parent = window
+
+	local close = Instance.new("TextButton")
+	close.Text = "✕"
+	close.Font = Enum.Font.GothamBold
+	close.TextSize = 20
+	close.TextColor3 = Color3.new(1, 1, 1)
+	close.BackgroundColor3 = Color3.fromRGB(60, 60, 75)
+	close.AnchorPoint = Vector2.new(1, 0)
+	close.Position = UDim2.new(1, -12, 0, 12)
+	close.Size = UDim2.fromOffset(36, 36)
+	close.Parent = window
+	corner(close, 8)
+	close.Activated:Connect(function()
+		setOpen(false)
+	end)
+
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.BackgroundTransparency = 1
+	scroll.BorderSizePixel = 0
+	scroll.Position = UDim2.fromOffset(18, 56)
+	scroll.Size = UDim2.new(1, -36, 1, -70)
+	scroll.ScrollBarThickness = 6
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scroll.CanvasSize = UDim2.new()
+	scroll.Parent = window
+
+	local columns = { { 0, 0.4 }, { 0.4, 0.2 }, { 0.6, 0.2 }, { 0.8, 0.2 } }
+	local header = { "", "Tangentbord", "Handkontroll", "Touch" }
+	for i, column in columns do
+		cell(scroll, header[i], column[1], column[2], 0, ACCENT, true)
+	end
+	for r, row in ROWS do
+		for i, column in columns do
+			cell(scroll, row[i], column[1], column[2], r * 24, Color3.new(1, 1, 1), i == 1)
+		end
+	end
+
+	local tips = Instance.new("TextLabel")
+	tips.BackgroundTransparency = 1
+	tips.Font = Enum.Font.Gotham
+	tips.TextSize = 15
+	tips.TextWrapped = true
+	tips.TextXAlignment = Enum.TextXAlignment.Left
+	tips.TextYAlignment = Enum.TextYAlignment.Top
+	tips.TextColor3 = Color3.fromRGB(200, 205, 220)
+	tips.Text = TIPS
+	tips.Position = UDim2.fromOffset(0, (#ROWS + 1) * 24 + 12)
+	tips.Size = UDim2.new(1, -10, 0, 70)
+	tips.Parent = scroll
+
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if not gameProcessed and input.KeyCode == Enum.KeyCode.H then
+			setOpen(not window.Visible)
+		end
+	end)
+
+	-- Visa hjälpen en gång när spelaren kommer in.
+	task.delay(3, function()
+		setOpen(true)
+	end)
+end
+
+return HelpUI
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000048"><Properties><string name="Name">LocationMenu</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Snabbresemeny: M-tangenten (eller MAP-knappen) öppnar en lista med platser.
 -- Klienten skickar bara platsens id. Servern validerar id och cooldown.
 
@@ -9867,7 +10086,7 @@ function LocationMenu.Start()
 end
 
 return LocationMenu
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000047"><Properties><string name="Name">MinimapUI</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000049"><Properties><string name="Name">MinimapUI</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Minikarta med norr uppåt: gator, huvudgator och vatten (genererat från stadskartan),
 -- havet och vägen till Tylösand, aktivitetsmarkörer, andra spelare, aktuellt mål och en pil
 -- för den egna bilen. Kartan flyttas under en fast ram (ClipsDescendants), så bara positionen
@@ -9882,6 +10101,7 @@ local ActivityConfig = require(ReplicatedStorage.Shared.Config.ActivityConfig)
 local MapData = require(ReplicatedStorage.Shared.Map.MapData)
 local MinimapData = require(ReplicatedStorage.Shared.Map.MinimapData)
 local ActivityController = require(script.Parent.Parent.Controllers.ActivityController)
+local RaceController = require(script.Parent.Parent.Controllers.RaceController)
 local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
 
 local MinimapUI = {}
@@ -10096,6 +10316,14 @@ function MinimapUI.Start()
 	ActivityController.Finished:Connect(function()
 		MinimapUI.SetTarget(nil)
 	end)
+	local function showNextCheckpoint()
+		MinimapUI.SetTarget(RaceController.NextCheckpoint())
+	end
+	RaceController.SetupReceived:Connect(showNextCheckpoint)
+	RaceController.CheckpointPassed:Connect(showNextCheckpoint)
+	RaceController.Finished:Connect(function()
+		MinimapUI.SetTarget(nil)
+	end)
 	Players.PlayerRemoving:Connect(function(other)
 		local marker = playerDots[other]
 		if marker then
@@ -10117,7 +10345,7 @@ function MinimapUI.Start()
 end
 
 return MinimapUI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000048"><Properties><string name="Name">RaceUI</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000004A"><Properties><string name="Name">RaceUI</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Race-gränssnitt: startknapp vid startlinjen, nedräkning, racepanel och resultattavla.
 
 local Players = game:GetService("Players")
@@ -10369,7 +10597,7 @@ function RaceUI.Start()
 end
 
 return RaceUI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000049"><Properties><string name="Name">ShopUI</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000004B"><Properties><string name="Name">ShopUI</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Butiken: daglig belöning, game passes och developer products.
 -- Köp startas med Robloxs egna köpfönster (MarketplaceService); servern delar ut.
 -- I Studio finns "Testa"-knappar så att allt kan provas utan riktiga köp.
@@ -10663,7 +10891,7 @@ function ShopUI.Start()
 end
 
 return ShopUI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000004A"><Properties><string name="Name">TouchControls</string><ProtectedString name="Source"><![CDATA[--!strict
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000004C"><Properties><string name="Name">TouchControls</string><ProtectedString name="Source"><![CDATA[--!strict
 -- Körknappar för pekskärm. Visas bara på enheter med touch och bara när man kör.
 -- Vänster: styr vänster/höger. Höger: gas, broms, drift, boost. Uppe till höger: återställ.
 

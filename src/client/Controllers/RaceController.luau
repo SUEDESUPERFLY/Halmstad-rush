@@ -113,6 +113,13 @@ function RaceController.Leave()
 	leaveRemote:FireServer()
 end
 
+-- Nästa kontrollpunkt (för minikartan), eller nil utanför race.
+function RaceController.NextCheckpoint(): Vector3?
+	local current = setup
+	local checkpoint = current and current.Checkpoints[passed + 1]
+	return checkpoint and checkpoint.Position
+end
+
 function RaceController.IsRacing(): boolean
 	return setup ~= nil
 end
