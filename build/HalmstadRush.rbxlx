@@ -1,0 +1,1754 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Item class="ReplicatedStorage" referent="RBX00000007"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX00000006"><Properties><string name="Name">Shared</string></Properties><Item class="Folder" referent="RBX00000002"><Properties><string name="Name">Config</string></Properties><Item class="ModuleScript" referent="RBX00000001"><Properties><string name="Name">VehicleConfig</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Alla siffror som styr bilens känsla. Justera här, inte i fysikkoden.
+-- Enheter: studs, sekunder. 1 stud/s ≈ 1 km/h i HUD:en (1 stud ≈ 0,28 m).
+
+local VehicleConfig = {}
+
+VehicleConfig.Tuning = {
+	-- Fjädring (raycast-hjul)
+	SuspensionRestLength = 2.0, -- max avstånd montering -> hjulcentrum
+	SpringStrength = 196, -- jämvikt: kompression = Gravity / SpringStrength ≈ 1 stud
+	SpringDamping = 18, -- ~0,65 av kritisk dämpning: lite studsig arkadkänsla
+	WheelRadius = 1.1,
+	VisualSpringLength = 1.0, -- fjäderlängd i vila, används för hjulens grundposition
+	MaxSteerAngle = math.rad(28), -- endast visuellt (framhjulen)
+
+	-- Motor
+	MaxSpeed = 110,
+	Acceleration = 48,
+	BrakeDeceleration = 110,
+	ReverseAcceleration = 40,
+	ReverseMaxSpeed = 35,
+	Drag = 0.35, -- exponentiell fartförlust utan gas (per sekund)
+	RollingResistance = 6,
+	OverspeedDecel = 25, -- hur snabbt farten sjunker tillbaka efter boost
+
+	-- Styrning
+	TurnRate = 2.4, -- rad/s vid full styrning
+	TurnSpeedFull = 25, -- under denna fart minskar svängförmågan (bilen svänger inte stillastående)
+	HighSpeedTurnFactor = 0.55, -- andel svängförmåga kvar vid toppfart
+	SteerSpeed = 5, -- hur snabbt rattutslaget når målet (per sekund)
+	YawResponse = 10,
+
+	-- Grepp och drift
+	Grip = 10, -- hur snabbt sidledsfart dör ut (per sekund)
+	DriftGrip = 1.3,
+	GripRecovery = 4,
+	DriftTurnBonus = 0.6,
+	DriftMinSpeed = 35,
+	DriftExitLateral = 8,
+	HandbrakeDecel = 12,
+
+	-- Luft
+	AirYawControl = 2.0,
+	AirUprightStrength = 7,
+	AirTiltDamping = 1.5,
+	ExtraGravity = 45, -- extra tyngd i luften för mer "punchiga" hopp
+
+	-- Boost (Burnout-stil)
+	BoostMaxSpeed = 165,
+	BoostAcceleration = 85,
+	BoostDrainPerSecond = 0.3,
+	BoostStart = 0.5, -- startvärde i fas 1 så att det går att testa direkt
+	ChargeDriftPerSecond = 0.18,
+	ChargeAirPerSecond = 0.25,
+	ChargeNearMiss = 0.12,
+	NearMissDistance = 5,
+	NearMissMinSpeed = 60,
+	NearMissCooldown = 1.5,
+	MinAirTimeForPopup = 0.6,
+
+	-- Auto-återställning när bilen ligger på taket
+	FlippedResetDelay = 2.5,
+}
+
+-- Gränser som servern kontrollerar. Klienten simulerar fysiken, servern håller koll.
+VehicleConfig.Server = {
+	HorizontalSpeedCap = 165 * 1.25,
+	CheckInterval = 0.25,
+	SpeedStrikesBeforeCorrection = 3,
+	TeleportSlack = 12, -- extra studs som tolereras per kontroll
+	ResetCooldown = 1.5,
+	FallResetY = -40,
+}
+
+-- Bilens geometri (relativt chassits centrum). Framåt = -Z.
+VehicleConfig.Geometry = {
+	ChassisSize = Vector3.new(6, 1.6, 11),
+	WheelMounts = {
+		{ Name = "FL", Offset = Vector3.new(-3.3, -0.3, -3.8), Front = true },
+		{ Name = "FR", Offset = Vector3.new(3.3, -0.3, -3.8), Front = true },
+		{ Name = "RL", Offset = Vector3.new(-3.3, -0.3, 3.8), Front = false },
+		{ Name = "RR", Offset = Vector3.new(3.3, -0.3, 3.8), Front = false },
+	},
+	WheelWidth = 1.2,
+}
+
+return VehicleConfig
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000003"><Properties><string name="Name">Remotes</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Alla RemoteEvents definieras här. Bara servern skapar dem; klienten väntar in dem.
+-- Varje handler på servern MÅSTE validera argument och takt (rate limit).
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Remotes = {}
+
+Remotes.Names = {
+	ResetVehicle = "ResetVehicle", -- klient -> server, inga argument
+}
+
+local FOLDER_NAME = "Remotes"
+
+local function getFolder(): Folder
+	if RunService:IsServer() then
+		local folder = ReplicatedStorage:FindFirstChild(FOLDER_NAME)
+		if not folder then
+			folder = Instance.new("Folder")
+			folder.Name = FOLDER_NAME
+			folder.Parent = ReplicatedStorage
+		end
+		return folder :: Folder
+	end
+	return ReplicatedStorage:WaitForChild(FOLDER_NAME) :: Folder
+end
+
+function Remotes.Get(name: string): RemoteEvent
+	assert(Remotes.Names[name], "Okänd remote: " .. name)
+	local folder = getFolder()
+	if RunService:IsServer() then
+		local remote = folder:FindFirstChild(name)
+		if not remote then
+			remote = Instance.new("RemoteEvent")
+			remote.Name = name
+			remote.Parent = folder
+		end
+		return remote :: RemoteEvent
+	end
+	return folder:WaitForChild(name) :: RemoteEvent
+end
+
+return Remotes
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000005"><Properties><string name="Name">Util</string></Properties><Item class="ModuleScript" referent="RBX00000004"><Properties><string name="Name">Signal</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Minimal signal för kommunikation mellan moduler på samma sida (klient eller server).
+
+export type Connection = {
+	Disconnect: (self: Connection) -> (),
+}
+
+export type Signal = {
+	Connect: (self: Signal, callback: (...any) -> ()) -> Connection,
+	Fire: (self: Signal, ...any) -> (),
+}
+
+local Signal = {}
+
+function Signal.new(): Signal
+	local listeners: { [number]: ((...any) -> ())? } = {}
+	local nextId = 0
+	local self = {}
+
+	function self:Connect(callback: (...any) -> ()): Connection
+		nextId += 1
+		local id = nextId
+		listeners[id] = callback
+		local connection = {}
+		function connection:Disconnect()
+			listeners[id] = nil
+		end
+		return connection :: Connection
+	end
+
+	function self:Fire(...: any)
+		for _, callback in listeners do
+			if callback then
+				task.spawn(callback, ...)
+			end
+		end
+	end
+
+	return self :: Signal
+end
+
+return Signal
+]]></ProtectedString></Properties></Item></Item></Item></Item><Item class="ServerScriptService" referent="RBX0000000E"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX0000000D"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Serverns startpunkt. Laddar alla services i Services/, kör Init() på alla
+-- och därefter Start() på alla. Init: skapa saker och koppla ihop. Start: börja köra.
+
+local servicesFolder = script:WaitForChild("Services")
+
+type Service = {
+	Init: (() -> ())?,
+	Start: (() -> ())?,
+}
+
+local services: { [string]: Service } = {}
+
+for _, module in servicesFolder:GetChildren() do
+	if module:IsA("ModuleScript") then
+		services[module.Name] = require(module) :: any
+	end
+end
+
+for name, service in services do
+	if service.Init then
+		local ok, err = pcall(service.Init)
+		if not ok then
+			warn(("[Server] %s.Init misslyckades: %s"):format(name, tostring(err)))
+		end
+	end
+end
+
+for name, service in services do
+	if service.Start then
+		task.spawn(function()
+			local ok, err = pcall(service.Start :: () -> ())
+			if not ok then
+				warn(("[Server] %s.Start misslyckades: %s"):format(name, tostring(err)))
+			end
+		end)
+	end
+end
+
+print("[Server] Halmstad Rush startad")
+]]></ProtectedString></Properties><Item class="Folder" referent="RBX0000000A"><Properties><string name="Name">Services</string></Properties><Item class="ModuleScript" referent="RBX00000008"><Properties><string name="Name">TestTrackService</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Fas 1: en testplatta med ramper, slalom och pelare för nära-ögat-boost.
+-- Ersätts av Halmstad-kartan i fas 2 (men behålls som "TestTrack" för felsökning).
+
+local Lighting = game:GetService("Lighting")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local VehicleService = require(ServerScriptService.Server.Services.VehicleService)
+
+local TestTrackService = {}
+
+local SPAWN_Z = 300
+local track: Folder
+
+local function block(name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material?): Part
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Anchored = true
+	part.Size = size
+	part.CFrame = cframe
+	part.Color = color
+	part.Material = material or Enum.Material.SmoothPlastic
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.Parent = track
+	return part
+end
+
+-- Platta markeringar som inte påverkar körning.
+local function decal(name: string, size: Vector3, position: Vector3, color: Color3)
+	local part = block(name, size, CFrame.new(position), color)
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+end
+
+-- Ramp som börjar i marknivå vid `start` och stiger i riktningen `yawDeg`
+-- (0 = mot -Z, samma håll som bilarna startar åt).
+local function ramp(name: string, start: Vector3, yawDeg: number, length: number, angleDeg: number, width: number): Part
+	local thickness = 2
+	local yaw = CFrame.Angles(0, math.rad(yawDeg), 0)
+	local flatForward = yaw.LookVector
+	local angle = math.rad(angleDeg)
+	local slope = flatForward * math.cos(angle) + Vector3.yAxis * math.sin(angle)
+	local right = yaw.RightVector
+	local normal = right:Cross(slope).Unit
+	local surfaceMid = start + slope * (length / 2)
+	local center = surfaceMid - normal * (thickness / 2)
+	local cframe = CFrame.fromMatrix(center, slope:Cross(normal), normal)
+	local part = block(name, Vector3.new(width, thickness, length), cframe, Color3.fromRGB(240, 170, 40), Enum.Material.DiamondPlate)
+	return part
+end
+
+local function rampTop(start: Vector3, yawDeg: number, length: number, angleDeg: number): Vector3
+	local flatForward = CFrame.Angles(0, math.rad(yawDeg), 0).LookVector
+	local angle = math.rad(angleDeg)
+	return start + flatForward * length * math.cos(angle) + Vector3.yAxis * length * math.sin(angle)
+end
+
+local function obstacle(part: BasePart)
+	part:SetAttribute("Obstacle", true)
+end
+
+local function build()
+	track = Instance.new("Folder")
+	track.Name = "TestTrack"
+	track.Parent = workspace
+
+	local asphalt = Color3.fromRGB(70, 72, 78)
+	block("Ground", Vector3.new(1600, 4, 1600), CFrame.new(0, -2, 0), asphalt, Enum.Material.Asphalt)
+
+	-- Raksträcka med mittlinje från start mot norr (-Z)
+	for z = SPAWN_Z - 40, -700, -30 do
+		decal("LaneLine", Vector3.new(1, 0.05, 14), Vector3.new(0, 0.03, z), Color3.new(1, 1, 1))
+	end
+
+	local spawn = Instance.new("SpawnLocation")
+	spawn.Name = "Spawn"
+	spawn.Anchored = true
+	spawn.Size = Vector3.new(12, 1, 12)
+	spawn.CFrame = CFrame.new(0, 0.5, SPAWN_Z + 60)
+	spawn.Neutral = true
+	spawn.Duration = 0
+	spawn.Color = Color3.fromRGB(60, 160, 255)
+	spawn.Parent = track
+
+	-- 1) Liten kicker rakt fram
+	ramp("Kicker", Vector3.new(0, 0, 150), 0, 18, 15, 20)
+
+	-- 2) Table-top: upp, platå, ner
+	local upStart = Vector3.new(0, 0, -50)
+	ramp("TableUp", upStart, 0, 40, 14, 26)
+	local top = rampTop(upStart, 0, 40, 14)
+	local plateauLength = 40
+	block(
+		"TablePlateau",
+		Vector3.new(26, top.Y, plateauLength),
+		CFrame.new(top.X, top.Y / 2, top.Z - plateauLength / 2),
+		Color3.fromRGB(240, 170, 40),
+		Enum.Material.DiamondPlate
+	)
+	ramp("TableDown", Vector3.new(0, 0, top.Z - plateauLength - 40 * math.cos(math.rad(14))), 180, 40, 14, 26)
+
+	-- 3) Stor hoppramp ut i luften
+	ramp("BigJump", Vector3.new(0, 0, -300), 0, 50, 22, 24)
+
+	-- 4) Slalom med pelare (nära-ögat-boost)
+	for i = 0, 9 do
+		local x = 150 + (i % 2) * 14 - 7
+		local pillar = block(
+			"Pillar",
+			Vector3.new(4, 16, 4),
+			CFrame.new(x, 8, 200 - i * 45),
+			Color3.fromRGB(230, 230, 235),
+			Enum.Material.Concrete
+		)
+		obstacle(pillar)
+	end
+
+	-- 5) Smal "tunnel" av väggar: kör genom för nära-ögat på båda sidor
+	for _, x in { -150 - 9, -150 + 9 } do
+		local wall = block("TunnelWall", Vector3.new(2, 8, 160), CFrame.new(x, 4, 100), Color3.fromRGB(200, 60, 60), Enum.Material.Brick)
+		obstacle(wall)
+	end
+
+	-- 6) Driftcirkel
+	local radius = 90
+	for i = 0, 23 do
+		local a = i / 24 * math.pi * 2
+		local cone = block(
+			"Cone",
+			Vector3.new(2, 3, 2),
+			CFrame.new(-350 + math.cos(a) * radius, 1.5, -200 + math.sin(a) * radius),
+			Color3.fromRGB(255, 120, 20)
+		)
+		obstacle(cone)
+	end
+
+	-- 7) Sidoramper åt öster och väster
+	ramp("SideRampEast", Vector3.new(300, 0, -100), -90, 30, 18, 20)
+	ramp("SideRampWest", Vector3.new(-300, 0, 100), 90, 30, 18, 20)
+
+	-- Kanter så man ser var plattan slutar
+	for _, data in
+		{
+			{ Vector3.new(1600, 3, 3), Vector3.new(0, 1.5, -800) },
+			{ Vector3.new(1600, 3, 3), Vector3.new(0, 1.5, 800) },
+			{ Vector3.new(3, 3, 1600), Vector3.new(-800, 1.5, 0) },
+			{ Vector3.new(3, 3, 1600), Vector3.new(800, 1.5, 0) },
+		}
+	do
+		block("Edge", data[1], CFrame.new(data[2]), Color3.fromRGB(255, 220, 0))
+	end
+end
+
+function TestTrackService.Init()
+	Lighting.ClockTime = 14
+	Lighting.Brightness = 2
+	build()
+
+	VehicleService.SetSpawnProvider(function(slot: number): CFrame
+		-- Två rader om fem, alla vända mot -Z
+		local column = (slot - 1) % 5
+		local row = math.floor((slot - 1) / 5)
+		return CFrame.new((column - 2) * 14, 4, SPAWN_Z + row * 20)
+	end)
+end
+
+function TestTrackService.Start() end
+
+return TestTrackService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000009"><Properties><string name="Name">VehicleService</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Ger varje spelare en bil, sätter föraren i den och vaktar fysiken.
+--
+-- Nätverksmodell: föraren äger bilens fysik (SetNetworkOwner) så att styrningen
+-- känns direkt. Servern litar inte blint på det: den kontrollerar hastighet och
+-- förflyttning och rättar till bilen om något ser fel ut.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local CarBuilder = require(script.Parent.Parent.Vehicle.CarBuilder)
+
+local ServerLimits = VehicleConfig.Server
+
+type CarRecord = {
+	Player: Player,
+	Model: Model,
+	Chassis: BasePart,
+	Seat: Seat,
+	Slot: number,
+	LastPosition: Vector3,
+	LastCheck: number,
+	SpeedStrikes: number,
+	IgnoreChecksUntil: number,
+	LastReset: number,
+}
+
+local VehicleService = {}
+
+local cars: { [Player]: CarRecord } = {}
+local usedSlots: { [number]: boolean } = {}
+local spawnProvider: ((slot: number) -> CFrame)? = nil
+
+local CAR_COLORS = {
+	Color3.fromRGB(230, 60, 60),
+	Color3.fromRGB(40, 130, 230),
+	Color3.fromRGB(250, 190, 30),
+	Color3.fromRGB(60, 190, 90),
+	Color3.fromRGB(160, 80, 220),
+	Color3.fromRGB(250, 120, 30),
+}
+
+-- Andra services (t.ex. testbanan, senare kartan) talar om var bilar ska starta.
+function VehicleService.SetSpawnProvider(provider: (slot: number) -> CFrame)
+	spawnProvider = provider
+end
+
+local function getSpawnCFrame(slot: number): CFrame
+	if spawnProvider then
+		return spawnProvider(slot)
+	end
+	return CFrame.new(slot * 12, 5, 0)
+end
+
+local function claimSlot(): number
+	local slot = 1
+	while usedSlots[slot] do
+		slot += 1
+	end
+	usedSlots[slot] = true
+	return slot
+end
+
+local function flatYaw(cf: CFrame): CFrame
+	local look = cf.LookVector * Vector3.new(1, 0, 1)
+	if look.Magnitude < 0.01 then
+		look = Vector3.new(0, 0, -1)
+	end
+	return CFrame.lookAt(Vector3.zero, look.Unit)
+end
+
+-- Flyttar en bil som klienten äger. Servern tar tillfälligt över ägarskapet
+-- så att flytten inte skrivs över av klientens simulering.
+local function forceMove(record: CarRecord, target: CFrame, velocity: Vector3?)
+	local chassis = record.Chassis
+	chassis:SetNetworkOwner(nil)
+	record.Model:PivotTo(target)
+	chassis.AssemblyLinearVelocity = velocity or Vector3.zero
+	chassis.AssemblyAngularVelocity = Vector3.zero
+	record.LastPosition = target.Position
+	record.IgnoreChecksUntil = os.clock() + 1
+	task.delay(0.15, function()
+		if cars[record.Player] == record and chassis.Parent then
+			chassis:SetNetworkOwner(record.Player)
+		end
+	end)
+end
+
+local function destroyCar(player: Player)
+	local record = cars[player]
+	if not record then
+		return
+	end
+	cars[player] = nil
+	usedSlots[record.Slot] = nil
+	record.Model:Destroy()
+end
+
+local function seatDriver(record: CarRecord, humanoid: Humanoid)
+	if record.Seat.Occupant == humanoid then
+		return
+	end
+	local character = humanoid.Parent :: Model
+	-- Föraren ska inte påverka bilens tyngdpunkt.
+	for _, descendant in character:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Massless = true
+		end
+	end
+	character:PivotTo(record.Seat.CFrame + Vector3.new(0, 3, 0))
+	record.Seat:Sit(humanoid)
+	task.defer(function()
+		if record.Chassis.Parent then
+			record.Chassis:SetNetworkOwner(record.Player)
+		end
+	end)
+end
+
+local function spawnCarFor(player: Player, character: Model)
+	destroyCar(player)
+
+	local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
+	local root = character:WaitForChild("HumanoidRootPart", 10)
+	if not humanoid or not root or character.Parent == nil then
+		return
+	end
+
+	local slot = claimSlot()
+	local model = CarBuilder.Build(CAR_COLORS[(slot - 1) % #CAR_COLORS + 1], player.UserId)
+	local spawnCFrame = getSpawnCFrame(slot)
+	model:PivotTo(spawnCFrame)
+	model.Parent = workspace
+
+	local record: CarRecord = {
+		Player = player,
+		Model = model,
+		Chassis = model.PrimaryPart :: BasePart,
+		Seat = model:FindFirstChild("DriverSeat") :: Seat,
+		Slot = slot,
+		LastPosition = spawnCFrame.Position,
+		LastCheck = os.clock(),
+		SpeedStrikes = 0,
+		IgnoreChecksUntil = os.clock() + 2,
+		LastReset = 0,
+	}
+	cars[player] = record
+	record.Chassis:SetNetworkOwner(player)
+
+	seatDriver(record, humanoid)
+
+	-- Om föraren av någon anledning åker ur sätet sätter vi tillbaka hen.
+	humanoid.Seated:Connect(function(isSeated: boolean)
+		if isSeated or cars[player] ~= record or humanoid.Health <= 0 then
+			return
+		end
+		task.delay(0.5, function()
+			if cars[player] == record and humanoid.Parent and humanoid.Health > 0 then
+				seatDriver(record, humanoid)
+			end
+		end)
+	end)
+
+	humanoid.Died:Connect(function()
+		if cars[player] == record then
+			destroyCar(player)
+		end
+	end)
+end
+
+local function resetCar(record: CarRecord, toSpawn: boolean)
+	local target
+	if toSpawn then
+		target = getSpawnCFrame(record.Slot)
+	else
+		local current = record.Chassis.CFrame
+		target = CFrame.new(current.Position + Vector3.new(0, 5, 0)) * flatYaw(current)
+	end
+	forceMove(record, target)
+end
+
+local function onResetRequested(player: Player)
+	local record = cars[player]
+	if not record then
+		return
+	end
+	local now = os.clock()
+	if now - record.LastReset < ServerLimits.ResetCooldown then
+		return
+	end
+	record.LastReset = now
+	resetCar(record, false)
+end
+
+local function validateCar(record: CarRecord, now: number)
+	local chassis = record.Chassis
+	local position = chassis.Position
+	local elapsed = now - record.LastCheck
+	record.LastCheck = now
+
+	if position.Y < ServerLimits.FallResetY then
+		resetCar(record, true)
+		return
+	end
+
+	if now < record.IgnoreChecksUntil then
+		record.LastPosition = position
+		return
+	end
+
+	-- Bara horisontellt: fritt fall får gå fort.
+	local velocity = chassis.AssemblyLinearVelocity
+	local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+	local moved = (position - record.LastPosition) * Vector3.new(1, 0, 1)
+	local maxMove = ServerLimits.HorizontalSpeedCap * elapsed * 1.5 + ServerLimits.TeleportSlack
+
+	if moved.Magnitude > maxMove then
+		warn(("[VehicleService] %s flyttade %.0f studs på %.2f s, återställer"):format(
+			record.Player.Name,
+			moved.Magnitude,
+			elapsed
+		))
+		forceMove(record, CFrame.new(record.LastPosition + Vector3.new(0, 3, 0)) * flatYaw(chassis.CFrame))
+		return
+	end
+
+	if horizontalSpeed > ServerLimits.HorizontalSpeedCap then
+		record.SpeedStrikes += 1
+		if record.SpeedStrikes >= ServerLimits.SpeedStrikesBeforeCorrection then
+			warn(("[VehicleService] %s körde %.0f studs/s, bromsar"):format(record.Player.Name, horizontalSpeed))
+			record.SpeedStrikes = 0
+			local capped = velocity.Unit * ServerLimits.HorizontalSpeedCap * 0.8
+			forceMove(record, chassis.CFrame, capped)
+			return
+		end
+	else
+		record.SpeedStrikes = 0
+	end
+
+	record.LastPosition = position
+end
+
+function VehicleService.GetCar(player: Player): Model?
+	local record = cars[player]
+	return record and record.Model
+end
+
+function VehicleService.Init()
+	Remotes.Get("ResetVehicle").OnServerEvent:Connect(onResetRequested)
+end
+
+function VehicleService.Start()
+	local function onPlayer(player: Player)
+		player.CharacterAdded:Connect(function(character)
+			spawnCarFor(player, character)
+		end)
+		if player.Character then
+			task.spawn(spawnCarFor, player, player.Character)
+		end
+	end
+
+	Players.PlayerAdded:Connect(onPlayer)
+	for _, player in Players:GetPlayers() do
+		onPlayer(player)
+	end
+	Players.PlayerRemoving:Connect(destroyCar)
+
+	local accumulator = 0
+	RunService.Heartbeat:Connect(function(dt)
+		accumulator += dt
+		if accumulator < ServerLimits.CheckInterval then
+			return
+		end
+		accumulator = 0
+		local now = os.clock()
+		for _, record in cars do
+			if record.Chassis.Parent then
+				validateCar(record, now)
+			end
+		end
+	end)
+end
+
+return VehicleService
+]]></ProtectedString></Properties></Item></Item><Item class="Folder" referent="RBX0000000C"><Properties><string name="Name">Vehicle</string></Properties><Item class="ModuleScript" referent="RBX0000000B"><Properties><string name="Name">CarBuilder</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Bygger en fantasibil ("Kustpilen") av enkla Parts.
+-- Chassit är den enda kroppen med massa; allt annat är Massless och svetsat.
+-- Klienten hittar hjulen via attributen och styr fjädringen via VectorForces.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
+
+local Tuning = VehicleConfig.Tuning
+local Geometry = VehicleConfig.Geometry
+
+local CarBuilder = {}
+
+local function makePart(props: { [string]: any }): Part
+	local part = Instance.new("Part")
+	part.Anchored = false
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.Massless = true
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.Material = Enum.Material.SmoothPlastic
+	for key, value in props do
+		(part :: any)[key] = value
+	end
+	return part
+end
+
+local function weldTo(part: BasePart, chassis: BasePart, offset: CFrame)
+	part.CFrame = chassis.CFrame * offset
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = chassis
+	weld.Part1 = part
+	weld.Parent = part
+	part.Parent = chassis.Parent
+end
+
+function CarBuilder.Build(bodyColor: Color3, ownerUserId: number): Model
+	local model = Instance.new("Model")
+	model.Name = "Car_" .. ownerUserId
+	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
+	model:SetAttribute("IsHalmstadCar", true)
+	model:SetAttribute("OwnerUserId", ownerUserId)
+
+	local size = Geometry.ChassisSize
+	local chassis = makePart({
+		Name = "Chassis",
+		Size = size,
+		Color = bodyColor,
+		CanCollide = true,
+		CanQuery = true,
+		CanTouch = true,
+		Massless = false,
+		RootPriority = 10,
+		CustomPhysicalProperties = PhysicalProperties.new(1.5, 0.1, 0.2, 1, 1),
+	})
+	chassis.Parent = model
+	model.PrimaryPart = chassis
+
+	-- Kaross (visuell)
+	local top = size.Y / 2
+	weldTo(makePart({ Name = "Hood", Size = Vector3.new(5.6, 0.6, 3.4), Color = bodyColor }), chassis, CFrame.new(0, top + 0.3, -3.6))
+	weldTo(makePart({ Name = "Trunk", Size = Vector3.new(5.6, 0.7, 2.6), Color = bodyColor }), chassis, CFrame.new(0, top + 0.35, 4.1))
+	weldTo(
+		makePart({
+			Name = "Windshield",
+			Size = Vector3.new(5.4, 1.6, 0.2),
+			Color = Color3.fromRGB(150, 200, 230),
+			Transparency = 0.4,
+			Material = Enum.Material.Glass,
+		}),
+		chassis,
+		CFrame.new(0, top + 1.0, -1.7) * CFrame.Angles(math.rad(-25), 0, 0)
+	)
+	weldTo(
+		makePart({ Name = "RollBar", Size = Vector3.new(5.4, 0.4, 0.4), Color = Color3.fromRGB(40, 40, 45) }),
+		chassis,
+		CFrame.new(0, top + 2.0, 2.4)
+	)
+	for _, x in { -2.6, 2.6 } do
+		weldTo(
+			makePart({ Name = "RollBarPost", Size = Vector3.new(0.4, 2.0, 0.4), Color = Color3.fromRGB(40, 40, 45) }),
+			chassis,
+			CFrame.new(x, top + 1.0, 2.4)
+		)
+		weldTo(
+			makePart({
+				Name = "Headlight",
+				Size = Vector3.new(1.2, 0.5, 0.2),
+				Color = Color3.fromRGB(255, 250, 220),
+				Material = Enum.Material.Neon,
+			}),
+			chassis,
+			CFrame.new(x * 0.8, 0.2, -size.Z / 2 - 0.05)
+		)
+		weldTo(
+			makePart({
+				Name = "Taillight",
+				Size = Vector3.new(1.2, 0.4, 0.2),
+				Color = Color3.fromRGB(255, 40, 40),
+				Material = Enum.Material.Neon,
+			}),
+			chassis,
+			CFrame.new(x * 0.8, 0.3, size.Z / 2 + 0.05)
+		)
+	end
+	weldTo(
+		makePart({ Name = "Spoiler", Size = Vector3.new(5.8, 0.25, 1.2), Color = Color3.fromRGB(30, 30, 30) }),
+		chassis,
+		CFrame.new(0, top + 1.3, 5.0)
+	)
+	weldTo(
+		makePart({ Name = "Stripe", Size = Vector3.new(1.2, 0.05, 11.05), Color = Color3.new(1, 1, 1) }),
+		chassis,
+		CFrame.new(0, top + 0.01, 0)
+	)
+
+	-- Säte. CanTouch = false så att ingen kan kliva in av misstag; servern sätter föraren med Seat:Sit.
+	local seat = Instance.new("Seat")
+	seat.Name = "DriverSeat"
+	seat.Size = Vector3.new(2, 0.4, 2)
+	seat.Transparency = 1
+	seat.CanCollide = false
+	seat.CanTouch = false
+	seat.CanQuery = false
+	seat.Massless = true
+	weldTo(seat, chassis, CFrame.new(0, top + 0.2, 0.6))
+
+	-- Hjul: monteringspunkt (Attachment + VectorForce) och visuellt hjul (Motor6D).
+	for _, mount in Geometry.WheelMounts do
+		local attachment = Instance.new("Attachment")
+		attachment.Name = "Mount_" .. mount.Name
+		attachment.Position = mount.Offset
+		attachment:SetAttribute("Front", mount.Front)
+		attachment.Parent = chassis
+
+		local force = Instance.new("VectorForce")
+		force.Name = "Spring"
+		force.Attachment0 = attachment
+		force.RelativeTo = Enum.ActuatorRelativeTo.World
+		force.ApplyAtCenterOfMass = false
+		force.Force = Vector3.zero
+		force.Parent = attachment
+
+		local wheel = makePart({
+			Name = "Wheel_" .. mount.Name,
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(Geometry.WheelWidth, Tuning.WheelRadius * 2, Tuning.WheelRadius * 2),
+			Color = Color3.fromRGB(25, 25, 25),
+		})
+		wheel.Parent = model
+
+		local motor = Instance.new("Motor6D")
+		motor.Name = "WheelMotor"
+		motor.Part0 = chassis
+		motor.Part1 = wheel
+		motor.C0 = CFrame.new(mount.Offset - Vector3.new(0, Tuning.VisualSpringLength, 0))
+		motor.Parent = attachment
+
+		local hub = makePart({
+			Name = "Hub",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(Geometry.WheelWidth + 0.1, 1.0, 1.0),
+			Color = Color3.fromRGB(200, 200, 210),
+			Material = Enum.Material.Metal,
+		})
+		weldTo(hub, wheel, CFrame.new())
+		hub.Parent = model
+	end
+
+	return model
+end
+
+return CarBuilder
+]]></ProtectedString></Properties></Item></Item></Item></Item><Item class="StarterPlayer" referent="RBX00000018"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000017"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000016"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Klientens startpunkt. Ordningen spelar roll: input först, sedan fordon,
+-- därefter sådant som lyssnar på fordonet (kamera och UI).
+
+local Controllers = script:WaitForChild("Controllers")
+local UI = script:WaitForChild("UI")
+
+local modules = {
+	Controllers:WaitForChild("InputController"),
+	Controllers:WaitForChild("VehicleController"),
+	Controllers:WaitForChild("CameraController"),
+	UI:WaitForChild("HUD"),
+	UI:WaitForChild("TouchControls"),
+}
+
+for _, module in modules do
+	local controller = require(module :: ModuleScript) :: any
+	local ok, err = pcall(controller.Start)
+	if not ok then
+		warn(("[Client] %s.Start misslyckades: %s"):format(module.Name, tostring(err)))
+	end
+end
+
+-- Börja leta efter spelarens bil först när alla lyssnare är uppkopplade.
+require(Controllers.VehicleController :: ModuleScript).Begin()
+]]></ProtectedString></Properties><Item class="Folder" referent="RBX00000012"><Properties><string name="Name">Controllers</string></Properties><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">CameraController</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Jaktkamera bakom bilen. Följer färdriktningen (så drifter syns), vidgar FOV
+-- med farten och skakar lätt vid boost.
+
+local RunService = game:GetService("RunService")
+
+local VehicleController = require(script.Parent.VehicleController)
+local VehicleConfig = require(game:GetService("ReplicatedStorage").Shared.Config.VehicleConfig)
+
+local T = VehicleConfig.Tuning
+
+local CameraController = {}
+
+local BIND_NAME = "HalmstadRushCamera"
+local DISTANCE = 18
+local HEIGHT = 6.5
+local LOOK_AHEAD = 8
+local BASE_FOV = 70
+local SPEED_FOV = 22
+local BOOST_FOV = 8
+
+local camera = workspace.CurrentCamera
+local smoothedDirection = Vector3.new(0, 0, -1)
+local smoothedPosition: Vector3? = nil
+local fov = BASE_FOV
+
+local function blend(rate: number, dt: number): number
+	return 1 - math.exp(-rate * dt)
+end
+
+local function update(dt: number)
+	local car = VehicleController.GetCar()
+	local chassis = car and car.PrimaryPart
+	if not chassis then
+		return
+	end
+	camera = workspace.CurrentCamera
+	local state = VehicleController.GetState()
+	local cf = chassis.CFrame
+	local velocity = chassis.AssemblyLinearVelocity
+	local flatVelocity = velocity * Vector3.new(1, 0, 1)
+	local flatLook = cf.LookVector * Vector3.new(1, 0, 1)
+	if flatLook.Magnitude < 0.01 then
+		flatLook = smoothedDirection
+	end
+
+	-- Riktning: blanda bilens nos och färdriktningen. Vid back: titta som bilen pekar.
+	local desired = flatLook.Unit
+	if flatVelocity.Magnitude > 20 and state.Speed > 0 then
+		desired = (flatLook.Unit * 0.5 + flatVelocity.Unit * 0.5).Unit
+	end
+	smoothedDirection = (smoothedDirection:Lerp(desired, blend(5, dt)))
+	if smoothedDirection.Magnitude < 0.01 then
+		smoothedDirection = desired
+	end
+	smoothedDirection = smoothedDirection.Unit
+
+	local carPos = cf.Position
+	local targetPos = carPos - smoothedDirection * DISTANCE + Vector3.yAxis * HEIGHT
+	if smoothedPosition == nil then
+		smoothedPosition = targetPos
+	end
+	-- Följ snabbt i sidled men låt höjden släpa lite (mjukare vid hopp).
+	local current = smoothedPosition :: Vector3
+	local horizontal = current:Lerp(targetPos, blend(12, dt))
+	local vertical = current.Y + (targetPos.Y - current.Y) * blend(6, dt)
+	local position = Vector3.new(horizontal.X, vertical, horizontal.Z)
+	smoothedPosition = position
+
+	local lookAt = carPos + smoothedDirection * LOOK_AHEAD + Vector3.yAxis * 2
+	local result = CFrame.lookAt(position, lookAt)
+
+	if state.Boosting then
+		local t = os.clock() * 40
+		result *= CFrame.new(math.noise(t, 0) * 0.15, math.noise(0, t) * 0.15, 0)
+	end
+	camera.CFrame = result
+
+	local speedRatio = math.clamp(math.abs(state.Speed) / T.BoostMaxSpeed, 0, 1)
+	local targetFov = BASE_FOV + SPEED_FOV * speedRatio + (if state.Boosting then BOOST_FOV else 0)
+	fov += (targetFov - fov) * blend(4, dt)
+	camera.FieldOfView = fov
+end
+
+function CameraController.Start()
+	VehicleController.Entered:Connect(function()
+		smoothedPosition = nil
+		camera = workspace.CurrentCamera
+		camera.CameraType = Enum.CameraType.Scriptable
+		RunService:UnbindFromRenderStep(BIND_NAME)
+		RunService:BindToRenderStep(BIND_NAME, Enum.RenderPriority.Camera.Value + 1, update)
+	end)
+
+	VehicleController.Exited:Connect(function()
+		RunService:UnbindFromRenderStep(BIND_NAME)
+		camera = workspace.CurrentCamera
+		camera.CameraType = Enum.CameraType.Custom
+		camera.FieldOfView = BASE_FOV
+	end)
+end
+
+return CameraController
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">InputController</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Samlar körinput från tangentbord, handkontroll och pekskärm till ett gemensamt format.
+--
+-- Tangentbord: W/S eller pilar = gas/broms (back), A/D = styr, Space = handbroms/drift,
+--              Shift = boost, R = återställ bilen.
+-- Handkontroll: RT = gas, LT = broms, vänster spak = styr, X = drift, A = boost, Y = återställ.
+-- Pekskärm: knappar på skärmen (skapas av TouchControls).
+
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Signal = require(ReplicatedStorage.Shared.Util.Signal)
+
+export type DriveInput = {
+	Throttle: number, -- 0..1
+	Brake: number, -- 0..1
+	Steer: number, -- -1 (vänster) .. 1 (höger)
+	Handbrake: boolean,
+	Boost: boolean,
+}
+
+local InputController = {}
+
+InputController.ResetPressed = Signal.new()
+
+-- Pekskärmsknapparna skriver hit
+local touchState = {
+	Throttle = false,
+	Brake = false,
+	Left = false,
+	Right = false,
+	Handbrake = false,
+	Boost = false,
+}
+
+local gamepad = {
+	Throttle = 0,
+	Brake = 0,
+	Steer = 0,
+	Handbrake = false,
+	Boost = false,
+}
+
+local STICK_DEADZONE = 0.15
+
+function InputController.SetTouch(name: string, pressed: boolean)
+	(touchState :: any)[name] = pressed
+end
+
+local function key(...: Enum.KeyCode): boolean
+	for _, code in { ... } do
+		if UserInputService:IsKeyDown(code) then
+			return true
+		end
+	end
+	return false
+end
+
+local function focused(): boolean
+	return UserInputService:GetFocusedTextBox() ~= nil
+end
+
+function InputController.GetDriveInput(): DriveInput
+	local typing = focused()
+	local kThrottle = not typing and key(Enum.KeyCode.W, Enum.KeyCode.Up)
+	local kBrake = not typing and key(Enum.KeyCode.S, Enum.KeyCode.Down)
+	local kLeft = not typing and key(Enum.KeyCode.A, Enum.KeyCode.Left)
+	local kRight = not typing and key(Enum.KeyCode.D, Enum.KeyCode.Right)
+	local kHandbrake = not typing and key(Enum.KeyCode.Space)
+	local kBoost = not typing and key(Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift)
+
+	local throttle = math.max(if kThrottle or touchState.Throttle then 1 else 0, gamepad.Throttle)
+	local brake = math.max(if kBrake or touchState.Brake then 1 else 0, gamepad.Brake)
+
+	local steer = gamepad.Steer
+	local digitalSteer = (if kRight or touchState.Right then 1 else 0) - (if kLeft or touchState.Left then 1 else 0)
+	if digitalSteer ~= 0 then
+		steer = digitalSteer
+	end
+
+	return {
+		Throttle = throttle,
+		Brake = brake,
+		Steer = math.clamp(steer, -1, 1),
+		Handbrake = kHandbrake or touchState.Handbrake or gamepad.Handbrake,
+		Boost = kBoost or touchState.Boost or gamepad.Boost,
+	}
+end
+
+function InputController.Start()
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.R or input.KeyCode == Enum.KeyCode.ButtonY then
+			InputController.ResetPressed:Fire()
+		elseif input.KeyCode == Enum.KeyCode.ButtonX then
+			gamepad.Handbrake = true
+		elseif input.KeyCode == Enum.KeyCode.ButtonA then
+			gamepad.Boost = true
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.ButtonX then
+			gamepad.Handbrake = false
+		elseif input.KeyCode == Enum.KeyCode.ButtonA then
+			gamepad.Boost = false
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.Gamepad1 then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.Thumbstick1 then
+			local x = input.Position.X
+			gamepad.Steer = if math.abs(x) > STICK_DEADZONE then x else 0
+		elseif input.KeyCode == Enum.KeyCode.ButtonR2 then
+			gamepad.Throttle = input.Position.Z
+		elseif input.KeyCode == Enum.KeyCode.ButtonL2 then
+			gamepad.Brake = input.Position.Z
+		end
+	end)
+end
+
+return InputController
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">VehicleController</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Arkadfysik för bilen spelaren kör. Körs på klienten eftersom föraren äger
+-- bilens fysik (nätverksägare). Servern vaktar hastighet och position.
+--
+-- Modell: chassit "svävar" på fyra raycast-fjädrar (VectorForce per hjul).
+-- På marken styr vi farten direkt: framåtfart (gas/broms), sidledsfart (grepp/drift)
+-- och girhastighet (styrning). I luften: lite luftkontroll och självrätning.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local VehicleConfig = require(ReplicatedStorage.Shared.Config.VehicleConfig)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Signal = require(ReplicatedStorage.Shared.Util.Signal)
+local InputController = require(script.Parent.InputController)
+
+local T = VehicleConfig.Tuning
+local player = Players.LocalPlayer
+
+type Wheel = {
+	Mount: Attachment,
+	Force: VectorForce,
+	Motor: Motor6D?,
+	Front: boolean,
+	SpringLength: number,
+	Spin: number,
+}
+
+export type DriveState = {
+	Speed: number, -- framåtfart i studs/s (negativ = backar)
+	Boost: number, -- 0..1
+	Boosting: boolean,
+	Drifting: boolean,
+	Airborne: boolean,
+}
+
+local VehicleController = {}
+
+VehicleController.Entered = Signal.new() -- (car: Model)
+VehicleController.Exited = Signal.new()
+VehicleController.Popup = Signal.new() -- (text: string, kind: string)
+
+local car: Model? = nil
+local chassis: BasePart? = nil
+local wheels: { Wheel } = {}
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.RespectCanCollide = true
+
+local state: DriveState = {
+	Speed = 0,
+	Boost = T.BoostStart,
+	Boosting = false,
+	Drifting = false,
+	Airborne = false,
+}
+
+local steerSmoothed = 0
+local currentGrip = T.Grip
+local airTime = 0
+local flippedTime = 0
+local nearMissCooldown: { [Instance]: number } = {}
+local lastResetRequest = 0
+local resetRemote: RemoteEvent
+
+local function moveToward(value: number, target: number, maxDelta: number): number
+	if value < target then
+		return math.min(value + maxDelta, target)
+	end
+	return math.max(value - maxDelta, target)
+end
+
+local function blend(rate: number, dt: number): number
+	return 1 - math.exp(-rate * dt)
+end
+
+function VehicleController.GetState(): DriveState
+	return state
+end
+
+function VehicleController.GetCar(): Model?
+	return car
+end
+
+function VehicleController.RequestReset()
+	local now = os.clock()
+	if not car or now - lastResetRequest < VehicleConfig.Server.ResetCooldown then
+		return
+	end
+	lastResetRequest = now
+	resetRemote:FireServer()
+end
+
+local function setPlayerControlsEnabled(enabled: boolean)
+	local ok, playerModule = pcall(function()
+		return require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule") :: ModuleScript) :: any
+	end)
+	if ok and playerModule then
+		local controls = playerModule:GetControls()
+		if enabled then
+			controls:Enable()
+		else
+			controls:Disable()
+		end
+	end
+end
+
+local function exitCar()
+	if not car then
+		return
+	end
+	for _, wheel in wheels do
+		wheel.Force.Force = Vector3.zero
+	end
+	car = nil
+	chassis = nil
+	wheels = {}
+	setPlayerControlsEnabled(true)
+	VehicleController.Exited:Fire()
+end
+
+local function enterCar(model: Model)
+	if car == model then
+		return
+	end
+	exitCar()
+	local root = model:WaitForChild("Chassis", 5) :: BasePart?
+	if not root or not model.Parent then
+		return
+	end
+	car = model
+	chassis = root
+	wheels = {}
+	for _, child in root:GetChildren() do
+		if child:IsA("Attachment") and child.Name:sub(1, 6) == "Mount_" then
+			local force = child:FindFirstChild("Spring") :: VectorForce
+			table.insert(wheels, {
+				Mount = child,
+				Force = force,
+				Motor = child:FindFirstChild("WheelMotor") :: Motor6D?,
+				Front = child:GetAttribute("Front") == true,
+				SpringLength = T.VisualSpringLength,
+				Spin = 0,
+			})
+		end
+	end
+	local filter: { Instance } = { model }
+	if player.Character then
+		table.insert(filter, player.Character)
+	end
+	rayParams.FilterDescendantsInstances = filter
+
+	state.Speed = 0
+	state.Drifting = false
+	state.Boosting = false
+	steerSmoothed = 0
+	currentGrip = T.Grip
+	airTime = 0
+	flippedTime = 0
+
+	setPlayerControlsEnabled(false)
+	VehicleController.Entered:Fire(model)
+end
+
+local function onSeatChanged(seatPart: BasePart?)
+	if seatPart and seatPart.Parent and seatPart.Parent:GetAttribute("IsHalmstadCar") then
+		local model = seatPart.Parent :: Model
+		if model:GetAttribute("OwnerUserId") == player.UserId then
+			enterCar(model)
+			return
+		end
+	end
+	exitCar()
+end
+
+local function checkNearMiss(cf: CFrame, speed: number)
+	if speed < T.NearMissMinSpeed then
+		return
+	end
+	local origin = cf.Position
+	local halfWidth = VehicleConfig.Geometry.ChassisSize.X / 2
+	local reach = halfWidth + T.NearMissDistance
+	local now = os.clock()
+	local directions = {
+		cf.RightVector,
+		-cf.RightVector,
+		(cf.RightVector - cf.LookVector * 0.6).Unit,
+		(-cf.RightVector - cf.LookVector * 0.6).Unit,
+	}
+	for _, direction in directions do
+		local result = workspace:Raycast(origin, direction * reach, rayParams)
+		if result and result.Instance:GetAttribute("Obstacle") then
+			local hit = result.Instance
+			if (nearMissCooldown[hit] or 0) < now then
+				nearMissCooldown[hit] = now + T.NearMissCooldown
+				state.Boost = math.min(1, state.Boost + T.ChargeNearMiss)
+				VehicleController.Popup:Fire("NEAR MISS!", "nearmiss")
+			end
+		end
+	end
+end
+
+local function updateSuspension(cf: CFrame, mass: number): (number, Vector3)
+	local root = chassis :: BasePart
+	local up = cf.UpVector
+	local rayLength = T.SuspensionRestLength + T.WheelRadius
+	local maxForce = mass * workspace.Gravity * 4
+	local grounded = 0
+	local normalSum = Vector3.zero
+
+	for _, wheel in wheels do
+		local mountPos = wheel.Mount.WorldPosition
+		local result = workspace:Raycast(mountPos, -up * rayLength, rayParams)
+		if result then
+			grounded += 1
+			normalSum += result.Normal
+			local springLength = math.max(result.Distance - T.WheelRadius, 0)
+			local compression = T.SuspensionRestLength - springLength
+			local pointVelocity = root:GetVelocityAtPosition(mountPos):Dot(up)
+			local force = (mass / 4) * (T.SpringStrength * compression - T.SpringDamping * pointVelocity)
+			wheel.Force.Force = up * math.clamp(force, 0, maxForce)
+			wheel.SpringLength = springLength
+		else
+			wheel.Force.Force = Vector3.zero
+			wheel.SpringLength = T.SuspensionRestLength
+		end
+	end
+
+	return grounded, normalSum
+end
+
+local function updateWheelVisuals(dt: number, forwardSpeed: number)
+	for _, wheel in wheels do
+		local motor = wheel.Motor
+		if motor then
+			wheel.Spin = (wheel.Spin - forwardSpeed / T.WheelRadius * dt) % (math.pi * 2)
+			local steerAngle = if wheel.Front then -steerSmoothed * T.MaxSteerAngle else 0
+			motor.Transform = CFrame.new(0, T.VisualSpringLength - wheel.SpringLength, 0)
+				* CFrame.Angles(0, steerAngle, 0)
+				* CFrame.Angles(wheel.Spin, 0, 0)
+		end
+	end
+end
+
+local function step(dt: number)
+	local root = chassis
+	if not root or not car or not car.Parent then
+		return
+	end
+	dt = math.min(dt, 1 / 30)
+
+	local input = InputController.GetDriveInput()
+	local cf = root.CFrame
+	local mass = root.AssemblyMass
+	local velocity = root.AssemblyLinearVelocity
+	local angular = root.AssemblyAngularVelocity
+
+	local grounded, normalSum = updateSuspension(cf, mass)
+	steerSmoothed = moveToward(steerSmoothed, input.Steer, T.SteerSpeed * dt)
+
+	local wantsBoost = input.Boost and state.Boost > 0
+	state.Boosting = wantsBoost
+	if wantsBoost then
+		state.Boost = math.max(0, state.Boost - T.BoostDrainPerSecond * dt)
+	end
+
+	if grounded >= 2 then
+		if state.Airborne and airTime >= T.MinAirTimeForPopup then
+			VehicleController.Popup:Fire(("AIR %.1fs"):format(airTime), "air")
+		end
+		state.Airborne = false
+		airTime = 0
+
+		local normal = (normalSum / grounded).Unit
+		local forward = cf.LookVector - normal * cf.LookVector:Dot(normal)
+		forward = if forward.Magnitude > 1e-3 then forward.Unit else cf.LookVector
+		local right = forward:Cross(normal)
+
+		local vF = velocity:Dot(forward)
+		local vR = velocity:Dot(right)
+		local vN = velocity:Dot(normal)
+
+		-- Gas, broms, back
+		local maxSpeed = if wantsBoost then T.BoostMaxSpeed else T.MaxSpeed
+		local acceleration = if wantsBoost then T.BoostAcceleration else T.Acceleration
+		local throttle = if wantsBoost then 1 else input.Throttle
+		if throttle > 0 and vF < maxSpeed then
+			vF = math.min(vF + acceleration * throttle * dt, maxSpeed)
+		end
+		if input.Brake > 0 then
+			if vF > 2 then
+				vF = math.max(vF - T.BrakeDeceleration * input.Brake * dt, 0)
+			else
+				vF = math.max(vF - T.ReverseAcceleration * input.Brake * dt, -T.ReverseMaxSpeed)
+			end
+		end
+		if throttle == 0 and input.Brake == 0 then
+			vF *= math.exp(-T.Drag * dt)
+			vF = moveToward(vF, 0, T.RollingResistance * dt)
+		end
+		if vF > maxSpeed then
+			vF = math.max(maxSpeed, vF - T.OverspeedDecel * dt)
+		end
+
+		-- Drift
+		local speedAbs = math.abs(vF)
+		if input.Handbrake and speedAbs > T.DriftMinSpeed then
+			if not state.Drifting then
+				VehicleController.Popup:Fire("DRIFT!", "drift")
+			end
+			state.Drifting = true
+		elseif state.Drifting then
+			local stillSliding = math.abs(vR) > T.DriftExitLateral and speedAbs > T.DriftMinSpeed * 0.6
+			if not stillSliding or input.Steer == 0 then
+				state.Drifting = false
+			end
+		end
+		if input.Handbrake then
+			vF = moveToward(vF, 0, T.HandbrakeDecel * dt)
+		end
+
+		local targetGrip = if state.Drifting then T.DriftGrip else T.Grip
+		currentGrip += (targetGrip - currentGrip) * blend(T.GripRecovery, dt)
+		vR *= math.exp(-currentGrip * dt)
+
+		if state.Drifting and speedAbs > 30 then
+			state.Boost = math.min(1, state.Boost + T.ChargeDriftPerSecond * dt)
+		end
+
+		-- Styrning: sätt girhastigheten runt markens normal
+		local speedRatio = math.clamp(speedAbs / T.MaxSpeed, 0, 1)
+		local lowSpeedFactor = math.clamp(speedAbs / T.TurnSpeedFull, 0, 1)
+		local turn = T.TurnRate * lowSpeedFactor * (1 - (1 - T.HighSpeedTurnFactor) * speedRatio)
+		if state.Drifting then
+			turn *= 1 + T.DriftTurnBonus
+		end
+		local direction = if vF >= 0 then 1 else -1
+		local targetYaw = -steerSmoothed * turn * direction
+		local currentYaw = angular:Dot(normal)
+		local newYaw = currentYaw + (targetYaw - currentYaw) * blend(T.YawResponse, dt)
+		angular += normal * (newYaw - currentYaw)
+
+		velocity = forward * vF + right * vR + normal * vN
+		state.Speed = vF
+	else
+		state.Airborne = grounded == 0
+		state.Drifting = false
+		if grounded == 0 then
+			airTime += dt
+			state.Boost = math.min(1, state.Boost + T.ChargeAirPerSecond * dt)
+		end
+
+		-- Luftkontroll (gir) och självrätning
+		local up = cf.UpVector
+		local currentYaw = angular:Dot(up)
+		local targetYaw = -input.Steer * T.AirYawControl
+		angular += up * ((targetYaw - currentYaw) * blend(2, dt))
+
+		local tiltAxis = up:Cross(Vector3.yAxis)
+		angular += tiltAxis * T.AirUprightStrength * dt
+		local yawPart = Vector3.yAxis * angular:Dot(Vector3.yAxis)
+		angular = yawPart + (angular - yawPart) * math.exp(-T.AirTiltDamping * dt)
+
+		velocity -= Vector3.yAxis * T.ExtraGravity * dt
+		state.Speed = velocity:Dot(cf.LookVector)
+	end
+
+	root.AssemblyLinearVelocity = velocity
+	root.AssemblyAngularVelocity = angular
+
+	checkNearMiss(cf, math.abs(state.Speed))
+	updateWheelVisuals(dt, state.Speed)
+
+	-- Ligger bilen på sidan/taket och står still? Återställ automatiskt.
+	if cf.UpVector.Y < 0.3 and velocity.Magnitude < 8 then
+		flippedTime += dt
+		if flippedTime > T.FlippedResetDelay then
+			flippedTime = 0
+			VehicleController.RequestReset()
+		end
+	else
+		flippedTime = 0
+	end
+
+	for instance, untilTime in nearMissCooldown do
+		if untilTime < os.clock() then
+			nearMissCooldown[instance] = nil
+		end
+	end
+end
+
+function VehicleController.Start()
+	resetRemote = Remotes.Get("ResetVehicle")
+	InputController.ResetPressed:Connect(VehicleController.RequestReset)
+	RunService.PreSimulation:Connect(step)
+end
+
+-- Anropas sist av init.client, när kamera och UI redan lyssnar på Entered/Exited.
+function VehicleController.Begin()
+	local function onCharacter(character: Model)
+		exitCar()
+		local humanoid = character:WaitForChild("Humanoid") :: Humanoid
+		humanoid:GetPropertyChangedSignal("SeatPart"):Connect(function()
+			onSeatChanged(humanoid.SeatPart)
+		end)
+		onSeatChanged(humanoid.SeatPart)
+	end
+
+	player.CharacterAdded:Connect(onCharacter)
+	if player.Character then
+		task.spawn(onCharacter, player.Character)
+	end
+end
+
+return VehicleController
+]]></ProtectedString></Properties></Item></Item><Item class="Folder" referent="RBX00000015"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX00000013"><Properties><string name="Name">HUD</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Hastighetsmätare, boost-mätare och popup-texter (DRIFT!, NEAR MISS!, AIR).
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
+
+local HUD = {}
+
+local POPUP_COLORS: { [string]: Color3 } = {
+	drift = Color3.fromRGB(255, 170, 40),
+	nearmiss = Color3.fromRGB(80, 220, 255),
+	air = Color3.fromRGB(150, 255, 120),
+}
+
+local gui: ScreenGui
+local speedLabel: TextLabel
+local boostFill: Frame
+local boostFrame: Frame
+local popupHolder: Frame
+
+local function corner(parent: Instance, radius: number)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius)
+	c.Parent = parent
+end
+
+local function build()
+	gui = Instance.new("ScreenGui")
+	gui.Name = "HUD"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.Enabled = false
+	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.AnchorPoint = Vector2.new(0.5, 0)
+	panel.Position = UDim2.new(0.5, 0, 0, 12)
+	panel.Size = UDim2.fromOffset(260, 74)
+	panel.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+	panel.BackgroundTransparency = 0.35
+	panel.Parent = gui
+	corner(panel, 12)
+
+	speedLabel = Instance.new("TextLabel")
+	speedLabel.Name = "Speed"
+	speedLabel.BackgroundTransparency = 1
+	speedLabel.Position = UDim2.fromOffset(0, 4)
+	speedLabel.Size = UDim2.new(1, 0, 0, 40)
+	speedLabel.Font = Enum.Font.GothamBlack
+	speedLabel.TextSize = 34
+	speedLabel.TextColor3 = Color3.new(1, 1, 1)
+	speedLabel.Text = "0 km/h"
+	speedLabel.Parent = panel
+
+	boostFrame = Instance.new("Frame")
+	boostFrame.Name = "Boost"
+	boostFrame.Position = UDim2.new(0, 14, 0, 50)
+	boostFrame.Size = UDim2.new(1, -28, 0, 14)
+	boostFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+	boostFrame.Parent = panel
+	corner(boostFrame, 7)
+
+	boostFill = Instance.new("Frame")
+	boostFill.Name = "Fill"
+	boostFill.Size = UDim2.fromScale(0.5, 1)
+	boostFill.BackgroundColor3 = Color3.fromRGB(255, 120, 30)
+	boostFill.Parent = boostFrame
+	corner(boostFill, 7)
+
+	popupHolder = Instance.new("Frame")
+	popupHolder.Name = "Popups"
+	popupHolder.BackgroundTransparency = 1
+	popupHolder.AnchorPoint = Vector2.new(0.5, 0)
+	popupHolder.Position = UDim2.new(0.5, 0, 0, 100)
+	popupHolder.Size = UDim2.fromOffset(400, 200)
+	popupHolder.Parent = gui
+
+	local layout = Instance.new("UIListLayout")
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.Padding = UDim.new(0, 4)
+	layout.Parent = popupHolder
+end
+
+local function showPopup(text: string, kind: string)
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromOffset(400, 36)
+	label.Font = Enum.Font.GothamBlack
+	label.TextSize = 30
+	label.Text = text
+	label.TextColor3 = POPUP_COLORS[kind] or Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 0.3
+	label.Parent = popupHolder
+
+	local fade = TweenService:Create(
+		label,
+		TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, 0.6),
+		{ TextTransparency = 1, TextStrokeTransparency = 1 }
+	)
+	fade:Play()
+	fade.Completed:Once(function()
+		label:Destroy()
+	end)
+end
+
+function HUD.Start()
+	build()
+
+	VehicleController.Entered:Connect(function()
+		gui.Enabled = true
+	end)
+	VehicleController.Exited:Connect(function()
+		gui.Enabled = false
+	end)
+	VehicleController.Popup:Connect(showPopup)
+
+	RunService.RenderStepped:Connect(function()
+		if not gui.Enabled then
+			return
+		end
+		local state = VehicleController.GetState()
+		speedLabel.Text = ("%d km/h"):format(math.floor(math.abs(state.Speed) + 0.5))
+		boostFill.Size = UDim2.fromScale(math.clamp(state.Boost, 0, 1), 1)
+		boostFill.BackgroundColor3 = if state.Boosting
+			then Color3.fromRGB(80, 220, 255)
+			else Color3.fromRGB(255, 120, 30)
+	end)
+end
+
+return HUD
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">TouchControls</string><ProtectedString name="Source"><![CDATA[--!strict
+-- Körknappar för pekskärm. Visas bara på enheter med touch och bara när man kör.
+-- Vänster: styr vänster/höger. Höger: gas, broms, drift, boost. Uppe till höger: återställ.
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local InputController = require(script.Parent.Parent.Controllers.InputController)
+local VehicleController = require(script.Parent.Parent.Controllers.VehicleController)
+
+local TouchControls = {}
+
+local gui: ScreenGui
+
+local function makeButton(name: string, text: string, size: number, position: UDim2, color: Color3): TextButton
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.Text = text
+	button.AutoButtonColor = false
+	button.AnchorPoint = Vector2.new(0.5, 0.5)
+	button.Size = UDim2.fromOffset(size, size)
+	button.Position = position
+	button.BackgroundColor3 = color
+	button.BackgroundTransparency = 0.35
+	button.TextColor3 = Color3.new(1, 1, 1)
+	button.Font = Enum.Font.GothamBlack
+	button.TextScaled = true
+	button.Parent = gui
+
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0.5, 0)
+	c.Parent = button
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0.18, 0)
+	padding.PaddingRight = UDim.new(0.18, 0)
+	padding.PaddingTop = UDim.new(0.3, 0)
+	padding.PaddingBottom = UDim.new(0.3, 0)
+	padding.Parent = button
+
+	return button
+end
+
+-- Håll-knapp: aktiv så länge ett finger ligger på den (fungerar med flera fingrar samtidigt).
+local function bindHold(button: TextButton, inputName: string)
+	local activeTouches: { [InputObject]: boolean } = {}
+	local function refresh()
+		local pressed = next(activeTouches) ~= nil
+		InputController.SetTouch(inputName, pressed)
+		button.BackgroundTransparency = if pressed then 0.1 else 0.35
+	end
+	button.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			activeTouches[input] = true
+			refresh()
+		end
+	end)
+	button.InputEnded:Connect(function(input)
+		activeTouches[input] = nil
+		refresh()
+	end)
+end
+
+local function build()
+	gui = Instance.new("ScreenGui")
+	gui.Name = "TouchControls"
+	gui.ResetOnSpawn = false
+	gui.Enabled = false
+	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+	local grey = Color3.fromRGB(40, 40, 50)
+	bindHold(makeButton("Left", "◀", 110, UDim2.new(0, 90, 1, -100), grey), "Left")
+	bindHold(makeButton("Right", "▶", 110, UDim2.new(0, 215, 1, -100), grey), "Right")
+
+	bindHold(makeButton("Gas", "GAS", 120, UDim2.new(1, -90, 1, -110), Color3.fromRGB(40, 170, 70)), "Throttle")
+	bindHold(makeButton("Brake", "BRAKE", 90, UDim2.new(1, -215, 1, -70), Color3.fromRGB(190, 50, 50)), "Brake")
+	bindHold(makeButton("Drift", "DRIFT", 90, UDim2.new(1, -215, 1, -175), Color3.fromRGB(220, 140, 30)), "Handbrake")
+	bindHold(makeButton("Boost", "BOOST", 100, UDim2.new(1, -90, 1, -240), Color3.fromRGB(40, 150, 230)), "Boost")
+
+	local reset = makeButton("Reset", "↻", 60, UDim2.new(1, -50, 0, 120), grey)
+	reset.Activated:Connect(VehicleController.RequestReset)
+end
+
+function TouchControls.Start()
+	if not UserInputService.TouchEnabled then
+		return
+	end
+	build()
+	pcall(function()
+		(Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui).ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
+	end)
+	VehicleController.Entered:Connect(function()
+		gui.Enabled = true
+	end)
+	VehicleController.Exited:Connect(function()
+		gui.Enabled = false
+		for _, name in { "Throttle", "Brake", "Left", "Right", "Handbrake", "Boost" } do
+			InputController.SetTouch(name, false)
+		end
+	end)
+end
+
+return TouchControls
+]]></ProtectedString></Properties></Item></Item></Item></Item></Item></roblox>

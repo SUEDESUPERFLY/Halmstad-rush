@@ -1,0 +1,8 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Studio-autosave och lokala kopior
+*.rbxl.lock
+*.rbxlx.lock
