@@ -276,7 +276,7 @@ build/      -> byggd placefil (committas)
 - [x] Fas 7: Butik, game passes, developer products, daglig belöning
 - [x] Fas 8: Ljud, UI, minikarta, mobiloptimering
 - [x] Fas 9: Snyggare stad: tak, fönster, trottoarer, träd, gatlyktor, vägmarkeringar, skuggor
-- [ ] Fas 10: Dagliga utmaningar, kom igång-guide, topplistor, badges, gömda laxar, veckans race, vänbonus, grupp *(byggd, väntar på test)*
+- [x] Fas 10: Dagliga utmaningar, kom igång-guide, topplistor, badges, gömda laxar, veckans race, vänbonus, grupp
 
 ## Kända begränsningar / att göra
 - Lint i molnmiljön: `stylua --syntax luau --check` (syntax) och `selene src` (`selene.toml`, egen std `roblox_min.yml` där Roblox-globaler bara deklareras). Ingen typkontroll (luau-lsp saknas), så typfel syns först i Studios Output-fönster. Verktygen installeras med `cargo install stylua selene` om de saknas.
