@@ -421,11 +421,11 @@ local CommunityConfig = {}
 
 -- Badges skapas på create.roblox.com (spelet → Engagement → Badges). Id = 0 = inte skapad än.
 CommunityConfig.Badges = {
-	Welcome = { Id = 0, Name = "Welcome to Halmstad" },
-	FirstRace = { Id = 0, Name = "First race" },
-	RaceWin = { Id = 0, Name = "Race winner" },
-	Takedowns100 = { Id = 0, Name = "100 takedowns" },
-	Galgberget = { Id = 0, Name = "Top of Galgberget" },
+	Welcome = { Id = 3486148860801302, Name = "Welcome to Halmstad" },
+	FirstRace = { Id = 769068350808809, Name = "First race" },
+	RaceWin = { Id = 2833434822219358, Name = "Race winner" },
+	Takedowns100 = { Id = 3118086716343800, Name = "100 takedowns" },
+	Galgberget = { Id = 2286011096965369, Name = "Top of Galgberget" },
 	Tylosand = { Id = 0, Name = "Beach day in Tylösand" },
 	AllSalmon = { Id = 0, Name = "Salmon hunter" },
 	DailyAll = { Id = 0, Name = "Daily hero" },
